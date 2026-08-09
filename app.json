@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Tavla",
+    "slug": "backgammon",
+    "version": "1.0.0",
+    "orientation": "landscape",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#1a0e08"
+    },
+    "plugins": [
+      "expo-screen-orientation",
+      "expo-asset",
+      "expo-font"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "requireFullScreen": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1a0e08"
+      }
+    }
+  }
+}
