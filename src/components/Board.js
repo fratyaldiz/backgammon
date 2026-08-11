@@ -74,12 +74,32 @@ const Board = () => {
   const SIDEBAR_WIDTH = 200;
   const PADDING = 24;
   const BEAR_OFF_W = THEME.sizes.bearOffWidth;
-  const BAR_W = THEME.sizes.barWidth;
-  const BOARD_AVAILABLE = width - SIDEBAR_WIDTH - PADDING - BEAR_OFF_W - BAR_W;
-  const POINT_WIDTH = Math.max(Math.floor((BOARD_AVAILABLE / 2) / 6), 20);
   const TRIANGLE_HEIGHT = height * 0.42;
-  const CHECKER_SIZE = Math.max(Math.floor(POINT_WIDTH * 0.9), 18);
-  const BAR_CHECKER_SIZE = Math.min(CHECKER_SIZE, BAR_W - 8);
+
+  // Bar genişliği taş boyutuna bağlı, taş boyutu da bar genişliğine — bir kez
+  // ön hesap yapıp bar'ı tam boyutlu taşa göre genişletiyor, sonra üçgen
+  // genişliğini kalan alana göre yeniden hesaplıyoruz.
+  const sizeFor = (barW) => {
+    const available = width - SIDEBAR_WIDTH - PADDING - BEAR_OFF_W - barW;
+    const pointWidth = Math.max(Math.floor((available / 2) / 6), 20);
+    return { pointWidth, checkerSize: Math.max(Math.floor(pointWidth * 0.9), 18) };
+  };
+
+  const firstPass = sizeFor(THEME.sizes.barWidth);
+  // Bar, kırık taşı tam boyutta ve nefes payıyla barındıracak kadar geniş
+  const BAR_W = Math.max(THEME.sizes.barWidth, firstPass.checkerSize + 12);
+  const { pointWidth: POINT_WIDTH, checkerSize: CHECKER_SIZE } = sizeFor(BAR_W);
+  const BAR_CHECKER_SIZE = CHECKER_SIZE;   // kırık taş normal taşla aynı boyutta
+
+  // Taşlar tam boyutta olduğu için çok sayıda kırık taş bar'a sığmayabilir;
+  // 3'ten sonrası kademeli olarak üst üste biner.
+  const barStackOffset = (count) => {
+    if (count <= 3) return 4;
+    const maxRun = TRIANGLE_HEIGHT * 0.85;
+    const needed = count * CHECKER_SIZE;
+    if (needed <= maxRun) return 4;
+    return -Math.min(Math.floor(CHECKER_SIZE * 0.55), Math.ceil((needed - maxRun) / (count - 1)));
+  };
 
   // Store
   const board = useGameStore(s => s.board);
@@ -390,8 +410,8 @@ const Board = () => {
           {renderQuadrant([12, 13, 14, 15, 16, 17], true)}
         </View>
 
-        {/* Bar */}
-        <View style={styles.bar}>
+        {/* Bar (kırık taşlar) */}
+        <View style={[styles.bar, { width: BAR_W }]}>
           <LinearGradient
             colors={THEME.gradients.barSurface}
             start={{ x: 0, y: 0 }}
@@ -402,12 +422,16 @@ const Board = () => {
           <Animated.View pointerEvents="none" style={[styles.barFlash, { opacity: barFlash }]} />
           <View style={styles.barCheckers}>
             {Array.from({ length: bar.white }).map((_, i) => (
-              <Checker key={`w${i}`} color={WHITE} size={BAR_CHECKER_SIZE} />
+              <View key={`w${i}`} style={{ marginTop: i === 0 ? 0 : barStackOffset(bar.white) }}>
+                <Checker color={WHITE} size={BAR_CHECKER_SIZE} />
+              </View>
             ))}
           </View>
           <View style={styles.barCheckers}>
             {Array.from({ length: bar.black }).map((_, i) => (
-              <Checker key={`b${i}`} color={BLACK} size={BAR_CHECKER_SIZE} />
+              <View key={`b${i}`} style={{ marginTop: i === 0 ? 0 : barStackOffset(bar.black) }}>
+                <Checker color={BLACK} size={BAR_CHECKER_SIZE} />
+              </View>
             ))}
           </View>
         </View>
@@ -492,12 +516,12 @@ const styles = StyleSheet.create({
     height: '47%',
   },
   bar: {
-    width: THEME.sizes.barWidth,
+    // genişlik dinamik: taş boyutuna göre Board içinde veriliyor
     borderLeftWidth: 2,
     borderRightWidth: 2,
     borderColor: THEME.colors.boardFrameInner,
     justifyContent: 'space-between',
-    paddingVertical: 15,
+    paddingVertical: 12,
     alignItems: 'center',
     overflow: 'hidden',
   },
@@ -506,7 +530,6 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.colors.danger,
   },
   barCheckers: {
-    gap: 2,
     alignItems: 'center',
   },
   bearOffArea: {
