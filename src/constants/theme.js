@@ -1,11 +1,11 @@
 const THEME = {
   colors: {
     boardDark: '#3D2314',        // Dark mahogany board surface
-    boardLight: '#E6C28F',       // Light pine wood board
+    boardLight: '#C19A6B',       // Professional matte wood color
     boardFrame: '#4A2511',       // Rich wood frame
-    boardFrameInner: '#331808',  // Inner shadow frame
+    boardFrameInner: '#2A1509',  // Inner shadow frame
     triangleDark: '#4A2511',     // Dark brown triangles
-    triangleLight: '#F5E6D3',    // Light cream triangles
+    triangleLight: '#F3E2C8',    // Soft ivory triangles
     triangleHighlight: 'rgba(255,215,0,0.5)', 
     checkerWhite: '#FFFFFF',
     checkerWhiteBorder: '#E6E6E6',

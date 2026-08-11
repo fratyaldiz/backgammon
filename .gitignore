@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+
+# Build
+*.hbc
+*.hbc.map

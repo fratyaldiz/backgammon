@@ -4,7 +4,7 @@ import THEME from '../constants/theme';
 import { WHITE } from '../utils/diceUtils';
 import { LinearGradient } from 'expo-linear-gradient';
 
-const Checker = ({ color, isSelected, count }) => {
+const Checker = ({ color, isSelected, count, size = 32 }) => {
   const scale = React.useRef(new Animated.Value(1)).current;
   const glowOpacity = React.useRef(new Animated.Value(0)).current;
 
@@ -36,26 +36,44 @@ const Checker = ({ color, isSelected, count }) => {
 
   const isWhite = color === WHITE;
   
+  // Profesyonel 3D gradient renkleri
   const gradientColors = isWhite 
-    ? ['#FFF', THEME.colors.checkerWhite, '#D4C4B0']
-    : ['#3A3A4E', THEME.colors.checkerBlack, '#0F0F1A'];
+    ? ['#FFFFFF', '#F0E6D2', '#D8C3A5']
+    : ['#4A4A4A', '#2C2C2C', '#111111'];
+
+  const innerGradientColors = isWhite
+    ? ['#D8C3A5', '#F0E6D2', '#FFFFFF']
+    : ['#111111', '#2C2C2C', '#4A4A4A'];
 
   return (
-    <Animated.View style={[styles.container, animatedStyle]}>
+    <Animated.View style={[styles.container, { width: size, height: size }, animatedStyle]}>
       <Animated.View style={[
         styles.glow, 
-        { backgroundColor: isWhite ? THEME.colors.checkerWhiteGlow : THEME.colors.checkerBlackGlow },
+        { 
+          backgroundColor: isWhite ? THEME.colors.checkerWhiteGlow : THEME.colors.checkerBlackGlow,
+          width: size * 1.3,
+          height: size * 1.3,
+          borderRadius: size * 0.65
+        },
         glowStyle
       ]} />
       <LinearGradient
         colors={gradientColors}
         style={[
           styles.checker,
-          { borderColor: isWhite ? THEME.colors.checkerWhiteBorder : THEME.colors.checkerBlackBorder }
+          { 
+            borderColor: isWhite ? '#C0B298' : '#000000',
+            borderRadius: size / 2
+          }
         ]}
       >
-        <View style={styles.innerRing} />
-        {count && <Text style={[styles.countText, { color: isWhite ? '#000' : '#FFF' }]}>{count}</Text>}
+        <LinearGradient
+          colors={innerGradientColors}
+          style={[styles.innerRing, { borderRadius: size * 0.35 }]}
+        >
+          <View style={[styles.centerDimple, { borderRadius: size * 0.2 }]} />
+        </LinearGradient>
+        {count && <Text style={[styles.countText, { color: isWhite ? '#000' : '#FFF', fontSize: size * 0.4 }]}>{count}</Text>}
       </LinearGradient>
     </Animated.View>
   );
@@ -63,41 +81,45 @@ const Checker = ({ color, isSelected, count }) => {
 
 const styles = StyleSheet.create({
   container: {
-    width: THEME.sizes.checkerRadius * 2,
-    height: THEME.sizes.checkerRadius * 2,
     justifyContent: 'center',
     alignItems: 'center',
   },
   checker: {
-    width: '100%',
-    height: '100%',
-    borderRadius: THEME.sizes.checkerRadius,
-    borderWidth: 2,
+    width: '95%',
+    height: '95%',
+    borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 2,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.6,
+    shadowRadius: 3,
+    elevation: 6,
   },
   innerRing: {
-    width: '60%',
-    height: '60%',
-    borderRadius: THEME.sizes.checkerRadius * 0.6,
+    width: '70%',
+    height: '70%',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(0,0,0,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  centerDimple: {
+    width: '40%',
+    height: '40%',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   glow: {
     position: 'absolute',
-    width: '120%',
-    height: '120%',
-    borderRadius: THEME.sizes.checkerRadius * 1.2,
   },
   countText: {
     position: 'absolute',
-    fontWeight: 'bold',
-    fontSize: 12,
+    fontWeight: '900',
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
 });
 

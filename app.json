@@ -20,7 +20,19 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#1a0e08"
+      },
+      "package": "com.firatyaldiz.backgammon"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5bde284b-076c-4425-a1b9-4951b2f29566"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/5bde284b-076c-4425-a1b9-4951b2f29566"
     }
   }
 }
