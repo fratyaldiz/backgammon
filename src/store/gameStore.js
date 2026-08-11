@@ -24,6 +24,7 @@ const useGameStore = create((set, get) => ({
   message: '',
   moveHistory: [],
   lastMove: null,
+  moveSeq: 0,
   showDoublesIndicator: false,
   turnFinished: false,
   turnInitialState: null,
@@ -47,6 +48,7 @@ const useGameStore = create((set, get) => ({
       message: 'Siyah taşlarla oynuyorsunuz. Rakip oynuyor...',
       moveHistory: [],
       lastMove: null,
+      moveSeq: 0,
       showDoublesIndicator: false,
       turnFinished: false,
       turnInitialState: null,
@@ -144,7 +146,7 @@ const useGameStore = create((set, get) => ({
 
   // ─── ANA HAMLE MOTORU ────────────────────────
   moveChecker: (fromIndex, toIndex) => {
-    const { board, bar, borneOff, currentPlayer, remainingMoves, moveHistory } = get();
+    const { board, bar, borneOff, currentPlayer, remainingMoves, moveHistory, moveSeq } = get();
 
     const validMoves = getValidFirstMoves(board, bar, borneOff, currentPlayer, remainingMoves);
     const move = validMoves.find(m => m.from === fromIndex && m.to === toIndex);
@@ -163,7 +165,7 @@ const useGameStore = create((set, get) => ({
       set({
         board: newState.board, bar: newState.bar, borneOff: newState.borneOff,
         remainingMoves: newRemainingMoves, moveHistory: newMoveHistory,
-        lastMove: move, selectedPoint: null, validDestinations: [],
+        lastMove: move, moveSeq: moveSeq + 1, selectedPoint: null, validDestinations: [],
         gamePhase: 'game_over', winner: currentPlayer, message: '',
       });
       return;
@@ -179,7 +181,7 @@ const useGameStore = create((set, get) => ({
     set({
       board: newState.board, bar: newState.bar, borneOff: newState.borneOff,
       remainingMoves: newRemainingMoves, moveHistory: newMoveHistory,
-      lastMove: move, selectedPoint: null, validDestinations: [], message: '',
+      lastMove: move, moveSeq: moveSeq + 1, selectedPoint: null, validDestinations: [], message: '',
     });
 
     if (!hasNextMoves) {
@@ -262,7 +264,7 @@ const useGameStore = create((set, get) => ({
           try { newState = applyMove(s.board, s.bar, s.borneOff, move, s.currentPlayer); }
           catch (e) { i++; setTimeout(applyNext, 300); return; }
 
-          set({ board: newState.board, bar: newState.bar, borneOff: newState.borneOff, lastMove: move });
+          set({ board: newState.board, bar: newState.bar, borneOff: newState.borneOff, lastMove: move, moveSeq: get().moveSeq + 1 });
 
           const result = isGameOver(newState.borneOff);
           if (result.gameOver) { set({ gamePhase: 'game_over', winner: s.currentPlayer, message: '' }); return; }
@@ -283,7 +285,7 @@ const useGameStore = create((set, get) => ({
     bar: { white: 0, black: 0 }, borneOff: { white: 0, black: 0 },
     currentPlayer: WHITE, playerColor: BLACK, dice: null,
     remainingMoves: [], selectedPoint: null, validDestinations: [],
-    winner: null, message: '', moveHistory: [], lastMove: null,
+    winner: null, message: '', moveHistory: [], lastMove: null, moveSeq: 0,
     showDoublesIndicator: false, turnFinished: false, turnInitialState: null, previousPhase: null,
   }),
   setDifficulty: (d) => set({ difficulty: d }),

@@ -1,16 +1,20 @@
-import React, { useRef, useState, useMemo } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, useWindowDimensions, PanResponder, Animated } from 'react-native';
+import React, { useRef, useState, useMemo, useEffect } from 'react';
+import { View, StyleSheet, Text, useWindowDimensions, PanResponder, Animated, Easing } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import useGameStore from '../store/gameStore';
 import Checker from './Checker';
 import THEME from '../constants/theme';
 import { WHITE, BLACK } from '../utils/diceUtils';
 
 // ─── Point (Üçgen) Bileşeni ─────────────────────
-const Point = ({ index, isUp, checkers, owner, isSelected, isDestination, pointWidth, triangleHeight, checkerSize }) => {
+const Point = ({ index, isUp, checkers, owner, isSelected, isDestination, pointWidth, triangleHeight, checkerSize, label }) => {
   const color = index % 2 === 0 ? THEME.colors.triangleDark : THEME.colors.triangleLight;
 
   return (
     <View style={[styles.pointContainer, isUp ? styles.pointUp : styles.pointDown, { width: pointWidth }]}>
+      {/* Nokta numarası (siyah perspektifi) */}
+      <Text style={[styles.pointNumber, isUp ? { bottom: 1 } : { top: 1 }]}>{label}</Text>
+
       <View style={[
         styles.triangle,
         isUp ? { bottom: 0, borderBottomWidth: triangleHeight } : { top: 0, borderTopWidth: triangleHeight },
@@ -33,6 +37,19 @@ const Point = ({ index, isUp, checkers, owner, isSelected, isDestination, pointW
         )}
       </View>
 
+      {/* Geçerli hedef halkası */}
+      {isDestination && (
+        <View style={[
+          styles.destRing,
+          {
+            width: checkerSize * 0.62,
+            height: checkerSize * 0.62,
+            borderRadius: checkerSize * 0.31,
+          },
+          isUp ? { bottom: checkerSize * 0.35 } : { top: checkerSize * 0.35 },
+        ]} />
+      )}
+
       <View style={[styles.checkersContainer, isUp ? { bottom: 2 } : { top: 2 }]}>
         {Array.from({ length: Math.min(checkers, 5) }).map((_, i) => {
           const overlap = Math.floor(checkerSize * 0.22);
@@ -52,6 +69,9 @@ const Point = ({ index, isUp, checkers, owner, isSelected, isDestination, pointW
   );
 };
 
+// Siyah oyuncu perspektifinde nokta numarası (evi 18-23 → 6..1)
+const pointLabel = (i) => 24 - i;
+
 // ─── Tahta Bileşeni ─────────────────────────────
 const Board = () => {
   const { width, height } = useWindowDimensions();
@@ -65,6 +85,7 @@ const Board = () => {
   const POINT_WIDTH = Math.max(Math.floor((BOARD_AVAILABLE / 2) / 6), 20);
   const TRIANGLE_HEIGHT = height * 0.42;
   const CHECKER_SIZE = Math.max(Math.floor(POINT_WIDTH * 0.9), 18);
+  const BAR_CHECKER_SIZE = Math.min(CHECKER_SIZE, BAR_W - 8);
 
   // Store
   const board = useGameStore(s => s.board);
@@ -76,6 +97,8 @@ const Board = () => {
   const playerColor = useGameStore(s => s.playerColor);
   const gamePhase = useGameStore(s => s.gamePhase);
   const remainingMoves = useGameStore(s => s.remainingMoves);
+  const lastMove = useGameStore(s => s.lastMove);
+  const moveSeq = useGameStore(s => s.moveSeq);
   const selectPoint = useGameStore(s => s.selectPoint);
   const moveToDestination = useGameStore(s => s.moveToDestination);
 
@@ -87,6 +110,19 @@ const Board = () => {
   const [dragVisible, setDragVisible] = useState(false);
   const [dragColor, setDragColor] = useState(BLACK);
   const boardLayoutRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+
+  // Kayma animasyonu state
+  const slidePos = useRef(new Animated.ValueXY()).current;
+  const [slideVisible, setSlideVisible] = useState(false);
+  const [slideColor, setSlideColor] = useState(BLACK);
+  const currentPlayerRef = useRef(currentPlayer);
+  currentPlayerRef.current = currentPlayer;
+  const lastMoveRef = useRef(lastMove);
+  lastMoveRef.current = lastMove;
+
+  // Kırılma flash state
+  const barFlash = useRef(new Animated.Value(0)).current;
+  const prevBarTotal = useRef(bar.white + bar.black);
 
   // PanResponder'ın güncel store değerlerine erişimi için ref
   const storeRef = useRef({});
@@ -136,6 +172,65 @@ const Board = () => {
     }
   };
 
+  // ─── Nokta indeksinden ekran koordinatı (kayma animasyonu için) ─
+  const getXYFromPoint = (idx) => {
+    const bw = boardLayoutRef.current.width;
+    const bh = boardLayoutRef.current.height;
+    if (!bw || !bh) return null;
+
+    const halfWidth = POINT_WIDTH * 6;
+    if (idx === 'bar') return { x: halfWidth + BAR_W / 2, y: bh / 2 };
+    if (idx === 'off') return { x: bw - 6, y: bh / 2 };
+
+    let x, y;
+    if (idx >= 6 && idx <= 11) {            // üst sol
+      x = (11 - idx + 0.5) * POINT_WIDTH;
+      y = bh * 0.18;
+    } else if (idx >= 0 && idx <= 5) {      // üst sağ
+      x = halfWidth + BAR_W + (5 - idx + 0.5) * POINT_WIDTH;
+      y = bh * 0.18;
+    } else if (idx >= 12 && idx <= 17) {    // alt sol
+      x = (idx - 12 + 0.5) * POINT_WIDTH;
+      y = bh * 0.82;
+    } else {                                 // alt sağ 18-23
+      x = halfWidth + BAR_W + (idx - 18 + 0.5) * POINT_WIDTH;
+      y = bh * 0.82;
+    }
+    return { x, y };
+  };
+
+  // ─── Kayma animasyonu (sadece ileri hamlede: oyuncu + AI) ──
+  // moveSeq yalnızca uygulanan hamlede artar; undo/reset'te değişmez.
+  useEffect(() => {
+    if (moveSeq === 0) return;
+    const move = lastMoveRef.current;
+    if (!move) return;
+
+    const from = getXYFromPoint(move.from);
+    const to = getXYFromPoint(move.to);
+    if (!from || !to) return;
+
+    setSlideColor(currentPlayerRef.current);
+    slidePos.setValue({ x: from.x - CHECKER_SIZE / 2, y: from.y - CHECKER_SIZE / 2 });
+    setSlideVisible(true);
+    Animated.timing(slidePos, {
+      toValue: { x: to.x - CHECKER_SIZE / 2, y: to.y - CHECKER_SIZE / 2 },
+      duration: 220,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start(({ finished }) => { if (finished) setSlideVisible(false); });
+  }, [moveSeq]);
+
+  // ─── Kırılma flash (bar'a yeni taş düşünce) ────
+  useEffect(() => {
+    const total = bar.white + bar.black;
+    if (total > prevBarTotal.current) {
+      barFlash.setValue(1);
+      Animated.timing(barFlash, { toValue: 0, duration: 650, useNativeDriver: true }).start();
+    }
+    prevBarTotal.current = total;
+  }, [bar.white, bar.black]);
+
   // ─── PanResponder (Dokunma + Sürükleme) ───────
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => {
@@ -149,11 +244,26 @@ const Board = () => {
       const s = storeRef.current;
       const idx = getPointFromXY(locationX, locationY);
 
-      // Nokta veya bar dokunması
-      if (idx === 'bar' || idx === 'off') {
+      // Bear-off dokunması (sadece dokunma, sürükleme yok)
+      if (idx === 'off') {
         dragFrom.current = idx;
         dragStartPos.current = { x: locationX, y: locationY };
         isDragging.current = false;
+        return;
+      }
+
+      // Bar dokunması / sürüklemesi (kırık taş)
+      if (idx === 'bar') {
+        const barCount = s.currentPlayer === WHITE ? s.bar.white : s.bar.black;
+        if (barCount > 0) {
+          dragFrom.current = 'bar';
+          dragStartPos.current = { x: locationX, y: locationY };
+          isDragging.current = false;
+          pan.setValue({ x: locationX - s.CHECKER_SIZE / 2, y: locationY - s.CHECKER_SIZE / 2 });
+          setDragColor(s.currentPlayer);
+        } else {
+          dragFrom.current = null;
+        }
         return;
       }
 
@@ -176,7 +286,7 @@ const Board = () => {
     },
 
     onPanResponderMove: (evt, gs) => {
-      if (dragFrom.current === null || dragFrom.current === 'bar' || dragFrom.current === 'off') return;
+      if (dragFrom.current === null || dragFrom.current === 'off') return;
       const s = storeRef.current;
       const dist = Math.sqrt(gs.dx * gs.dx + gs.dy * gs.dy);
 
@@ -201,8 +311,8 @@ const Board = () => {
       if (dist < 12) {
         // DOKUNMA → otomatik hamle
         selectPoint(from);
-      } else if (isDragging.current && from !== 'bar' && from !== 'off') {
-        // SÜRÜKLEME → hedef bul
+      } else if (isDragging.current && from !== 'off') {
+        // SÜRÜKLEME → hedef bul (bar dahil)
         const dropX = dragStartPos.current.x + gs.dx;
         const dropY = dragStartPos.current.y + gs.dy;
         const dropIdx = getPointFromXY(dropX, dropY);
@@ -242,6 +352,7 @@ const Board = () => {
             pointWidth={POINT_WIDTH}
             triangleHeight={TRIANGLE_HEIGHT}
             checkerSize={CHECKER_SIZE}
+            label={pointLabel(i)}
           />
         );
       })}
@@ -249,12 +360,26 @@ const Board = () => {
   );
 
   return (
-    <View style={styles.boardContainer}>
+    <LinearGradient
+      colors={THEME.gradients.boardFrame}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.boardContainer}
+    >
       {/* Ana Tahta */}
       <View
         style={styles.mainBoard}
         onLayout={e => { boardLayoutRef.current = e.nativeEvent.layout; }}
       >
+        {/* Ahşap yüzey gradyanı */}
+        <LinearGradient
+          colors={THEME.gradients.boardSurface}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+
         {/* Sol Yarı */}
         <View style={styles.halfBoard}>
           {renderQuadrant([11, 10, 9, 8, 7, 6], false)}
@@ -263,14 +388,22 @@ const Board = () => {
 
         {/* Bar */}
         <View style={styles.bar}>
+          <LinearGradient
+            colors={THEME.gradients.barSurface}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <Animated.View pointerEvents="none" style={[styles.barFlash, { opacity: barFlash }]} />
           <View style={styles.barCheckers}>
             {Array.from({ length: bar.white }).map((_, i) => (
-              <Checker key={`w${i}`} color={WHITE} size={Math.min(CHECKER_SIZE, 22)} />
+              <Checker key={`w${i}`} color={WHITE} size={BAR_CHECKER_SIZE} />
             ))}
           </View>
           <View style={styles.barCheckers}>
             {Array.from({ length: bar.black }).map((_, i) => (
-              <Checker key={`b${i}`} color={BLACK} size={Math.min(CHECKER_SIZE, 22)} />
+              <Checker key={`b${i}`} color={BLACK} size={BAR_CHECKER_SIZE} />
             ))}
           </View>
         </View>
@@ -284,28 +417,41 @@ const Board = () => {
         {/* Dokunma + Sürükleme overlay */}
         <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers} pointerEvents="box-only" />
 
+        {/* Kayan taş (hamle animasyonu) */}
+        {slideVisible && (
+          <Animated.View style={[styles.floatingChecker, { transform: slidePos.getTranslateTransform() }]} pointerEvents="none">
+            <Checker color={slideColor} size={CHECKER_SIZE} />
+          </Animated.View>
+        )}
+
         {/* Sürüklenen taş */}
         {dragVisible && (
-          <Animated.View style={[styles.floatingChecker, { transform: pan.getTranslateTransform() }]}>
+          <Animated.View style={[styles.floatingChecker, { transform: pan.getTranslateTransform() }]} pointerEvents="none">
             <Checker color={dragColor} size={CHECKER_SIZE} />
           </Animated.View>
         )}
       </View>
 
       {/* Taş Toplama Alanı (SAĞ TARAF) */}
-      <View style={styles.bearOffArea}>
+      <LinearGradient
+        colors={THEME.gradients.barSurface}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={styles.bearOffArea}
+      >
         <View style={styles.bearOffBox}>
-          <Text style={styles.bearOffLabel}>B</Text>
+          <Text style={styles.bearOffLabel}>Beyaz</Text>
           <Text style={styles.bearOffText}>{borneOff.white}</Text>
-          {borneOff.white > 0 && <Checker color={WHITE} size={Math.min(CHECKER_SIZE, 20)} />}
+          {borneOff.white > 0 && <Checker color={WHITE} size={Math.min(CHECKER_SIZE, 22)} />}
         </View>
+        <View style={styles.bearOffDivider} />
         <View style={styles.bearOffBox}>
-          <Text style={styles.bearOffLabel}>S</Text>
+          <Text style={styles.bearOffLabel}>Siyah</Text>
           <Text style={styles.bearOffText}>{borneOff.black}</Text>
-          {borneOff.black > 0 && <Checker color={BLACK} size={Math.min(CHECKER_SIZE, 20)} />}
+          {borneOff.black > 0 && <Checker color={BLACK} size={Math.min(CHECKER_SIZE, 22)} />}
         </View>
-      </View>
-    </View>
+      </LinearGradient>
+    </LinearGradient>
   );
 };
 
@@ -313,19 +459,18 @@ const Board = () => {
 const styles = StyleSheet.create({
   boardContainer: {
     flexDirection: 'row',
-    backgroundColor: THEME.colors.boardFrame,
     padding: THEME.sizes.borderWidth,
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 4,
-    borderColor: THEME.colors.boardFrameInner,
+    borderColor: THEME.colors.gold,
     width: '100%',
     height: '100%',
     alignSelf: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 10,
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 12,
   },
   mainBoard: {
     flex: 1,
@@ -344,13 +489,17 @@ const styles = StyleSheet.create({
   },
   bar: {
     width: THEME.sizes.barWidth,
-    backgroundColor: THEME.colors.barColor,
     borderLeftWidth: 2,
     borderRightWidth: 2,
     borderColor: THEME.colors.boardFrameInner,
     justifyContent: 'space-between',
     paddingVertical: 15,
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  barFlash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: THEME.colors.danger,
   },
   barCheckers: {
     gap: 2,
@@ -358,27 +507,33 @@ const styles = StyleSheet.create({
   },
   bearOffArea: {
     width: THEME.sizes.bearOffWidth,
-    backgroundColor: THEME.colors.bearOffBg,
     marginLeft: 4,
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
     paddingVertical: 8,
     alignItems: 'center',
-    borderLeftWidth: 2,
-    borderColor: THEME.colors.boardFrameInner,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: THEME.colors.gold,
   },
   bearOffBox: {
     alignItems: 'center',
     gap: 2,
   },
+  bearOffDivider: {
+    width: '70%',
+    height: 1,
+    backgroundColor: 'rgba(212,175,55,0.3)',
+  },
   bearOffLabel: {
-    color: THEME.colors.textSecondary,
-    fontSize: 10,
+    color: THEME.colors.gold,
+    fontSize: 9,
     fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
   bearOffText: {
     color: THEME.colors.textPrimary,
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 16,
   },
   pointContainer: {
     alignItems: 'center',
@@ -389,6 +544,13 @@ const styles = StyleSheet.create({
   },
   pointDown: {
     justifyContent: 'flex-start',
+  },
+  pointNumber: {
+    position: 'absolute',
+    color: 'rgba(42,21,9,0.55)',
+    fontSize: 9,
+    fontWeight: 'bold',
+    zIndex: 3,
   },
   triangle: {
     width: 0,
@@ -409,10 +571,22 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
   },
+  destRing: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderColor: THEME.colors.gold,
+    backgroundColor: 'rgba(255,215,0,0.22)',
+    zIndex: 2,
+    shadowColor: THEME.colors.gold,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 5,
+    elevation: 4,
+  },
   floatingChecker: {
     position: 'absolute',
     zIndex: 200,
-    opacity: 0.85,
+    opacity: 0.9,
   },
 });
 

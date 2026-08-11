@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import useGameStore from '../store/gameStore';
 import Board from '../components/Board';
 import Dice from '../components/Dice';
@@ -9,15 +10,37 @@ import { getPipCount } from '../utils/gameLogic';
 import { Ionicons } from '@expo/vector-icons';
 
 const PlayerInfo = ({ name, color, isActive, pips, borneOff }) => {
+  const isWhite = color === WHITE;
   return (
-    <View style={[styles.playerInfo, isActive && styles.activePlayer]}>
-      <View style={[styles.colorDot, { backgroundColor: color === WHITE ? '#FFF' : '#222' }]} />
+    <LinearGradient
+      colors={isActive ? THEME.gradients.panelActive : THEME.gradients.panel}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 0, y: 1 }}
+      style={[styles.playerInfo, isActive && styles.activePlayer]}
+    >
+      {isActive && (
+        <View style={styles.turnBadge}>
+          <Text style={styles.turnBadgeText}>SIRA</Text>
+        </View>
+      )}
+      <View style={[
+        styles.avatar,
+        { backgroundColor: isWhite ? '#F0E6D2' : '#1A1A2E', borderColor: isActive ? THEME.colors.gold : '#555' },
+      ]}>
+        <Ionicons name="person" size={20} color={isWhite ? '#1A1A2E' : '#F0E6D2'} />
+      </View>
       <Text style={styles.playerName}>{name}</Text>
       <View style={styles.statsContainer}>
-        <Text style={styles.statsText}>Pip: {pips}</Text>
-        <Text style={styles.statsText}>Toplanan: {borneOff}</Text>
+        <View style={styles.statRow}>
+          <Text style={styles.statLabel}>Pip</Text>
+          <Text style={styles.statValue}>{pips}</Text>
+        </View>
+        <View style={styles.statRow}>
+          <Text style={styles.statLabel}>Toplanan</Text>
+          <Text style={styles.statValue}>{borneOff}/15</Text>
+        </View>
       </View>
-    </View>
+    </LinearGradient>
   );
 };
 
@@ -58,31 +81,38 @@ const GameScreen = () => {
       <View style={styles.boardWrapper}>
         <Board />
         
-        {/* Yüzen Zarlar */}
+        {/* Yüzen Zarlar (SOL) */}
         <View style={styles.diceOverlay}>
-          <View style={styles.diceArea}>
-            <Dice 
-              dice={dice} 
-              remainingMoves={remainingMoves} 
+          <LinearGradient
+            colors={THEME.gradients.diceTray}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.diceTray}
+          >
+            <Dice
+              dice={dice}
+              remainingMoves={remainingMoves}
               rolling={gamePhase === 'rolling' && dice !== null}
               onRoll={gamePhase === 'rolling' && isPlayerTurn ? rollDice : null}
             />
-          </View>
-          
-          {/* Aksiyon Butonları */}
-          <View style={styles.actionButtonsRow}>
-            {isPlayerTurn && gamePhase === 'moving' && moveHistory.length > 0 && (
-              <TouchableOpacity style={styles.actionButton} onPress={undoMove}>
-                <Ionicons name="arrow-undo" size={22} color="#FFF" />
-              </TouchableOpacity>
-            )}
-            
-            {isPlayerTurn && gamePhase === 'moving' && turnFinished && (
-              <TouchableOpacity style={[styles.actionButton, styles.endTurnButton]} onPress={endTurn}>
-                <Ionicons name="play-forward" size={22} color="#FFF" />
-              </TouchableOpacity>
-            )}
-          </View>
+          </LinearGradient>
+        </View>
+
+        {/* Aksiyon Butonları (SAĞ) */}
+        <View style={styles.actionOverlay}>
+          {isPlayerTurn && gamePhase === 'moving' && moveHistory.length > 0 && (
+            <TouchableOpacity style={styles.actionButton} onPress={undoMove}>
+              <Ionicons name="arrow-undo" size={22} color="#FFF" />
+              <Text style={styles.actionButtonLabel}>Geri Al</Text>
+            </TouchableOpacity>
+          )}
+
+          {isPlayerTurn && gamePhase === 'moving' && turnFinished && (
+            <TouchableOpacity style={[styles.actionButton, styles.endTurnButton]} onPress={endTurn}>
+              <Ionicons name="play-forward" size={22} color={THEME.colors.textDark} />
+              <Text style={[styles.actionButtonLabel, styles.endTurnLabel]}>Turu Bitir</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -163,76 +193,136 @@ const styles = StyleSheet.create({
   },
   diceOverlay: {
     position: 'absolute',
-    left: '15%',
-    top: '35%',
+    left: '14%',
+    top: '38%',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 50,
   },
-  diceArea: {
+  diceTray: {
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
+    padding: 8,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: THEME.colors.gold,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 8,
   },
-  actionButtonsRow: {
-    flexDirection: 'row',
-    gap: 12,
+  actionOverlay: {
+    position: 'absolute',
+    right: '11%',
+    top: '34%',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 14,
+    zIndex: 50,
   },
   actionButton: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    minWidth: 66,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#666',
+    borderColor: '#6b5636',
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 6,
+  },
+  actionButtonLabel: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginTop: 3,
   },
   endTurnButton: {
     backgroundColor: THEME.colors.gold,
     borderColor: '#FFF',
   },
+  endTurnLabel: {
+    color: THEME.colors.textDark,
+  },
   playerInfo: {
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    padding: 8,
-    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#333',
+    borderColor: '#3a2a18',
     width: '100%',
     alignItems: 'center',
     marginBottom: 15,
+    position: 'relative',
   },
   activePlayer: {
     borderColor: THEME.colors.gold,
     shadowColor: THEME.colors.gold,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 5,
-    elevation: 5,
+    shadowOpacity: 0.9,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  colorDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    marginBottom: 5,
+  turnBadge: {
+    position: 'absolute',
+    top: -9,
+    backgroundColor: THEME.colors.gold,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#888',
+    borderColor: '#FFF',
+  },
+  turnBadgeText: {
+    color: THEME.colors.textDark,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
   },
   playerName: {
     color: THEME.colors.textPrimary,
     fontWeight: 'bold',
     fontSize: 12,
-    marginBottom: 4,
+    marginBottom: 8,
     textAlign: 'center',
   },
   statsContainer: {
     width: '100%',
-    alignItems: 'center',
+    gap: 4,
   },
-  statsText: {
+  statRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  statLabel: {
     color: THEME.colors.textSecondary,
-    fontSize: 10,
-    marginVertical: 1,
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  statValue: {
+    color: THEME.colors.goldLight,
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   messageText: {
     color: THEME.colors.goldLight,

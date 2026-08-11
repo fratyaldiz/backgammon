@@ -34,7 +34,7 @@ const THEME = {
   sizes: {
     checkerRadius: 16,           // Checker circle radius
     pointWidth: 38,              // Triangle/point width
-    barWidth: 30,                // Center bar width
+    barWidth: 46,                // Center bar width
     bearOffWidth: 40,            // Bear-off tray width
     borderWidth: 8,              // Board frame border
     diceSize: 36,                // Dice face size
@@ -42,6 +42,15 @@ const THEME = {
   fonts: {
     heading: 'serif',
     body: 'System',
-  }
+  },
+  gradients: {
+    boardFrame: ['#6b3d1c', '#3a1d0c', '#2a1509'],   // Wood frame sheen
+    boardSurface: ['#cda878', '#bb8f60', '#a67c4e'],  // Playing surface wood
+    barSurface: ['#3a2414', '#241209', '#160b04'],    // Center bar
+    panel: ['#33210f', '#1c1108'],                    // Player panel
+    panelActive: ['#4a3316', '#2a1a0c'],              // Active player panel
+    diceTray: ['#3d2818', '#241308'],                 // Dice tray
+    gold: ['#F0D060', '#D4AF37', '#9c7d24'],          // Gold accent
+  },
 };
 export default THEME;
