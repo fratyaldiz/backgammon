@@ -25,7 +25,7 @@ const MenuScreen = () => {
   const difficulties = [
     { id: 'easy', name: 'Kolay', desc: 'Rastgele hamleler' },
     { id: 'medium', name: 'Orta', desc: 'Temel strateji' },
-    { id: 'hard', name: 'Zor', desc: 'İleri düzey yapay zeka' }
+    { id: 'hard', name: 'Uzman', desc: 'Konum analizi + ileri hamle hesabı' }
   ];
 
   return (
