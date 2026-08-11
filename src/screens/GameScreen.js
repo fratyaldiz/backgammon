@@ -81,25 +81,34 @@ const GameScreen = () => {
       <View style={styles.boardWrapper}>
         <Board />
         
-        {/* Yüzen Zarlar (SOL) */}
-        <View style={styles.diceOverlay}>
-          <LinearGradient
-            colors={THEME.gradients.diceTray}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={styles.diceTray}
-          >
-            <Dice
-              dice={dice}
-              remainingMoves={remainingMoves}
-              rolling={gamePhase === 'rolling' && dice !== null}
-              onRoll={gamePhase === 'rolling' && isPlayerTurn ? rollDice : null}
-            />
-          </LinearGradient>
-        </View>
+        {/* Atılan Zarlar (SOL) */}
+        {dice && (
+          <View style={styles.diceOverlay}>
+            <LinearGradient
+              colors={THEME.gradients.diceTray}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={styles.diceTray}
+            >
+              <Dice
+                dice={dice}
+                remainingMoves={remainingMoves}
+                rolling={false}
+                onRoll={null}
+              />
+            </LinearGradient>
+          </View>
+        )}
 
         {/* Aksiyon Butonları (SAĞ) */}
         <View style={styles.actionOverlay}>
+          {isPlayerTurn && gamePhase === 'rolling' && (
+            <TouchableOpacity style={styles.rollButton} onPress={rollDice}>
+              <Ionicons name="dice" size={24} color={THEME.colors.textDark} />
+              <Text style={styles.rollButtonLabel}>ZAR AT</Text>
+            </TouchableOpacity>
+          )}
+
           {isPlayerTurn && gamePhase === 'moving' && moveHistory.length > 0 && (
             <TouchableOpacity style={styles.actionButton} onPress={undoMove}>
               <Ionicons name="arrow-undo" size={22} color="#FFF" />
@@ -249,6 +258,29 @@ const styles = StyleSheet.create({
   },
   endTurnLabel: {
     color: THEME.colors.textDark,
+  },
+  rollButton: {
+    backgroundColor: THEME.colors.gold,
+    minWidth: 72,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#FFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: THEME.colors.gold,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  rollButtonLabel: {
+    color: THEME.colors.textDark,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginTop: 3,
   },
   playerInfo: {
     paddingVertical: 12,
