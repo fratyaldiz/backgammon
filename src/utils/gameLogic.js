@@ -153,45 +153,60 @@ export function getValidMovesForState(board, bar, borneOff, player, remainingDic
 }
 
 export function getAllLegalTurnSequences(board, bar, borneOff, player, remainingDice) {
+  // Memoization: aynı (durum + kalan zar) alt problemleri tekrar hesaplanmaz.
+  // Özellikle çift zarda permütasyon patlamasını önler; çıktı semantiği aynıdır.
+  return _turnSequences(board, bar, borneOff, player, remainingDice, new Map());
+}
+
+function _turnSequences(board, bar, borneOff, player, remainingDice, memo) {
   if (remainingDice.length === 0) return [[]];
 
+  const key = player + '|' + [...remainingDice].sort((a, b) => a - b).join(',')
+    + '|' + board.join(',')
+    + '|' + bar.white + ',' + bar.black
+    + '|' + borneOff.white + ',' + borneOff.black;
+  const cached = memo.get(key);
+  if (cached) return cached;
+
   const validMoves = getValidMovesForState(board, bar, borneOff, player, remainingDice);
-  if (validMoves.length === 0) return [[]];
+  if (validMoves.length === 0) { memo.set(key, [[]]); return [[]]; }
 
   const allSequences = [];
-  
+
   for (const move of validMoves) {
     const nextState = applyMove(board, bar, borneOff, move, player);
     const diceIndex = remainingDice.indexOf(move.dieValue);
     const nextDice = [...remainingDice];
     nextDice.splice(diceIndex, 1);
-    
-    const subsequences = getAllLegalTurnSequences(
+
+    const subsequences = _turnSequences(
       nextState.board,
       nextState.bar,
       nextState.borneOff,
       player,
-      nextDice
+      nextDice,
+      memo
     );
-    
+
     for (const sub of subsequences) {
       allSequences.push([move, ...sub]);
     }
   }
 
-  if (allSequences.length === 0) return [[]];
+  if (allSequences.length === 0) { memo.set(key, [[]]); return [[]]; }
 
   const maxLength = Math.max(...allSequences.map(seq => seq.length));
   let filtered = allSequences.filter(seq => seq.length === maxLength);
 
   if (maxLength === 1 && remainingDice.length === 2 && remainingDice[0] !== remainingDice[1]) {
-    const maxDieUsed = Math.max(...filtered.map(seq => seq[0].dieValue));
-    const canUseLarge = filtered.some(seq => seq[0].dieValue === Math.max(...remainingDice));
+    const largest = Math.max(...remainingDice);
+    const canUseLarge = filtered.some(seq => seq[0].dieValue === largest);
     if (canUseLarge) {
-      filtered = filtered.filter(seq => seq[0].dieValue === Math.max(...remainingDice));
+      filtered = filtered.filter(seq => seq[0].dieValue === largest);
     }
   }
 
+  memo.set(key, filtered);
   return filtered;
 }
 

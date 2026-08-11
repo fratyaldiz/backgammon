@@ -65,30 +65,49 @@ function applySequence(board, bar, borneOff, moves, player) {
   return currentState;
 }
 
-/**
- * EASY MODE: Picks a random legal move sequence.
- */
-function getEasyMove(sequences) {
-  const randomIndex = Math.floor(Math.random() * sequences.length);
-  return sequences[randomIndex];
+// Performans sınırları: hesabın tek thread'i kilitlemesini önler.
+const AI_MAX_STATES = 600;       // easy/medium: puanlanacak benzersiz sonuç sayısı
+const AI_HARD_MAX_STATES = 100;  // hard: pahalı, daha düşük tavan
+const AI_HARD_OPP_CAP = 20;      // hard: her zar kombinasyonu için rakip cevabı
+
+function stateSignature(state) {
+  return state.board.join(',')
+    + '|' + (state.bar.white || 0) + ',' + (state.bar.black || 0)
+    + '|' + (state.borneOff.white || 0) + ',' + (state.borneOff.black || 0);
 }
 
 /**
- * MEDIUM MODE: Evaluates and scores sequences using a heuristic.
+ * Sekansları nihai duruma göre tekilleştirir; permütasyonlar tek temsilciye iner.
+ * cap'e ulaşınca durur (patlamayı önler). Döner: [{ seq, state }]
  */
-function getMediumMove(board, bar, borneOff, player, sequences) {
+function uniqueOutcomes(board, bar, borneOff, sequences, player, cap) {
+  const map = new Map();
+  for (const seq of sequences) {
+    const state = applySequence(board, bar, borneOff, seq, player);
+    const sig = stateSignature(state);
+    if (!map.has(sig)) {
+      map.set(sig, { seq, state });
+      if (map.size >= cap) break;
+    }
+  }
+  return Array.from(map.values());
+}
+
+/**
+ * MEDIUM MODE: Evaluates and scores unique outcomes using a heuristic.
+ */
+function getMediumMove(board, bar, borneOff, player, outcomes) {
   let bestScore = -Infinity;
   let bestSequences = [];
 
-  for (const sequence of sequences) {
-    const finalState = applySequence(board, bar, borneOff, sequence, player);
-    const score = scoreMediumSequence(board, bar, borneOff, finalState, player);
+  for (const { seq, state } of outcomes) {
+    const score = scoreMediumSequence(board, bar, borneOff, state, player);
 
     if (score > bestScore) {
       bestScore = score;
-      bestSequences = [sequence];
+      bestSequences = [seq];
     } else if (score === bestScore) {
-      bestSequences.push(sequence);
+      bestSequences.push(seq);
     }
   }
 
@@ -171,27 +190,26 @@ function scoreMediumSequence(initialBoard, initialBar, initialBorneOff, finalSta
 /**
  * HARD MODE: Expectiminimax limited to 1 ply (opponent's response).
  */
-function getHardMove(board, bar, borneOff, player, sequences) {
+function getHardMove(board, bar, borneOff, player, outcomes) {
   let bestScore = -Infinity;
   let bestSequences = [];
   const opponent = player === WHITE ? BLACK : WHITE;
 
-  for (const sequence of sequences) {
-    const afterAiState = applySequence(board, bar, borneOff, sequence, player);
+  for (const { seq, state: afterAiState } of outcomes) {
     let expectedEvaluation = 0;
 
     for (const combo of DICE_COMBINATIONS) {
       const oppSequences = getAllLegalTurnSequences(afterAiState.board, afterAiState.bar, afterAiState.borneOff, opponent, combo.roll);
-      
+
       let minEvalForAi = Infinity;
 
       if (!oppSequences || oppSequences.length === 0 || (oppSequences.length === 1 && oppSequences[0].length === 0)) {
         minEvalForAi = evaluateBoard(afterAiState.board, afterAiState.bar, afterAiState.borneOff, player);
       } else {
-        for (const oppSeq of oppSequences) {
-          const afterOppState = applySequence(afterAiState.board, afterAiState.bar, afterAiState.borneOff, oppSeq, opponent);
-          const evalScore = evaluateBoard(afterOppState.board, afterOppState.bar, afterOppState.borneOff, player);
-          
+        // Rakip cevaplarını da tekilleştir + sınırla (hard modun patlamasını önler)
+        const oppOutcomes = uniqueOutcomes(afterAiState.board, afterAiState.bar, afterAiState.borneOff, oppSequences, opponent, AI_HARD_OPP_CAP);
+        for (const oo of oppOutcomes) {
+          const evalScore = evaluateBoard(oo.state.board, oo.state.bar, oo.state.borneOff, player);
           if (evalScore < minEvalForAi) {
             minEvalForAi = evalScore;
           }
@@ -203,9 +221,9 @@ function getHardMove(board, bar, borneOff, player, sequences) {
 
     if (expectedEvaluation > bestScore) {
       bestScore = expectedEvaluation;
-      bestSequences = [sequence];
+      bestSequences = [seq];
     } else if (expectedEvaluation === bestScore) {
-      bestSequences.push(sequence);
+      bestSequences.push(seq);
     }
   }
 
@@ -218,18 +236,23 @@ function getHardMove(board, bar, borneOff, player, sequences) {
  */
 export function getAIMoves(board, bar, borneOff, player, dice, difficulty = 'easy') {
   const sequences = getAllLegalTurnSequences(board, bar, borneOff, player, dice);
-  
+
   if (!sequences || sequences.length === 0 || (sequences.length === 1 && sequences[0].length === 0)) {
     return [];
   }
 
+  // Sonuçları nihai duruma göre tekilleştir + tavana kadar sınırla.
+  const cap = difficulty === 'hard' ? AI_HARD_MAX_STATES : AI_MAX_STATES;
+  const outcomes = uniqueOutcomes(board, bar, borneOff, sequences, player, cap);
+  if (outcomes.length === 0) return [];
+
   switch (difficulty) {
     case 'medium':
-      return getMediumMove(board, bar, borneOff, player, sequences);
+      return getMediumMove(board, bar, borneOff, player, outcomes);
     case 'hard':
-      return getHardMove(board, bar, borneOff, player, sequences);
+      return getHardMove(board, bar, borneOff, player, outcomes);
     case 'easy':
     default:
-      return getEasyMove(sequences);
+      return outcomes[Math.floor(Math.random() * outcomes.length)].seq;
   }
 }

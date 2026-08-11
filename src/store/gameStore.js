@@ -60,7 +60,9 @@ const useGameStore = create((set, get) => ({
   // ─── DURAKLAT / DEVAM ────────────────────────
   pauseGame: () => {
     const phase = get().gamePhase;
-    if (phase !== 'menu' && phase !== 'paused' && phase !== 'game_over') {
+    // 'ai_thinking' sırasında duraklatma yok: AI hamle zinciri (applyNext) faz
+    // değişince durur ve resume'da yeniden başlamaz — kalıcı kilide yol açar.
+    if (phase !== 'menu' && phase !== 'paused' && phase !== 'game_over' && phase !== 'ai_thinking') {
       set({ gamePhase: 'paused', previousPhase: phase });
     }
   },

@@ -7,14 +7,11 @@ import THEME from '../constants/theme';
 import { WHITE, BLACK } from '../utils/diceUtils';
 
 // ─── Point (Üçgen) Bileşeni ─────────────────────
-const Point = ({ index, isUp, checkers, owner, isSelected, isDestination, pointWidth, triangleHeight, checkerSize, label }) => {
+const Point = ({ index, isUp, checkers, owner, isSelected, isDestination, pointWidth, triangleHeight, checkerSize }) => {
   const color = index % 2 === 0 ? THEME.colors.triangleDark : THEME.colors.triangleLight;
 
   return (
     <View style={[styles.pointContainer, isUp ? styles.pointUp : styles.pointDown, { width: pointWidth }]}>
-      {/* Nokta numarası (siyah perspektifi) */}
-      <Text style={[styles.pointNumber, isUp ? { bottom: 1 } : { top: 1 }]}>{label}</Text>
-
       <View style={[
         styles.triangle,
         isUp ? { bottom: 0, borderBottomWidth: triangleHeight } : { top: 0, borderTopWidth: triangleHeight },
@@ -69,9 +66,6 @@ const Point = ({ index, isUp, checkers, owner, isSelected, isDestination, pointW
   );
 };
 
-// Siyah oyuncu perspektifinde nokta numarası (evi 18-23 → 6..1)
-const pointLabel = (i) => 24 - i;
-
 // ─── Tahta Bileşeni ─────────────────────────────
 const Board = () => {
   const { width, height } = useWindowDimensions();
@@ -119,6 +113,8 @@ const Board = () => {
   currentPlayerRef.current = currentPlayer;
   const lastMoveRef = useRef(lastMove);
   lastMoveRef.current = lastMove;
+  const boardRef = useRef(board);
+  boardRef.current = board;
 
   // Kırılma flash state
   const barFlash = useRef(new Animated.Value(0)).current;
@@ -172,8 +168,10 @@ const Board = () => {
     }
   };
 
-  // ─── Nokta indeksinden ekran koordinatı (kayma animasyonu için) ─
-  const getXYFromPoint = (idx) => {
+  // ─── Nokta + yığın indeksinden ekran koordinatı (kayma animasyonu) ─
+  // stackIndex: taşın üçgendeki dizilim sırası (kenardan içeri). Gerçek
+  // taş konumuna denk gelsin diye yığın kayması hesaba katılır.
+  const getCheckerXY = (idx, stackIndex) => {
     const bw = boardLayoutRef.current.width;
     const bh = boardLayoutRef.current.height;
     if (!bw || !bh) return null;
@@ -182,20 +180,21 @@ const Board = () => {
     if (idx === 'bar') return { x: halfWidth + BAR_W / 2, y: bh / 2 };
     if (idx === 'off') return { x: bw - 6, y: bh / 2 };
 
-    let x, y;
+    let x, isTop;
     if (idx >= 6 && idx <= 11) {            // üst sol
-      x = (11 - idx + 0.5) * POINT_WIDTH;
-      y = bh * 0.18;
+      x = (11 - idx + 0.5) * POINT_WIDTH; isTop = true;
     } else if (idx >= 0 && idx <= 5) {      // üst sağ
-      x = halfWidth + BAR_W + (5 - idx + 0.5) * POINT_WIDTH;
-      y = bh * 0.18;
+      x = halfWidth + BAR_W + (5 - idx + 0.5) * POINT_WIDTH; isTop = true;
     } else if (idx >= 12 && idx <= 17) {    // alt sol
-      x = (idx - 12 + 0.5) * POINT_WIDTH;
-      y = bh * 0.82;
+      x = (idx - 12 + 0.5) * POINT_WIDTH; isTop = false;
     } else {                                 // alt sağ 18-23
-      x = halfWidth + BAR_W + (idx - 18 + 0.5) * POINT_WIDTH;
-      y = bh * 0.82;
+      x = halfWidth + BAR_W + (idx - 18 + 0.5) * POINT_WIDTH; isTop = false;
     }
+
+    const step = CHECKER_SIZE * 0.78;
+    const edge = 2 + CHECKER_SIZE / 2;
+    const s = Math.min(Math.max(stackIndex, 0), 4);
+    const y = isTop ? (edge + s * step) : (bh - edge - s * step);
     return { x, y };
   };
 
@@ -205,9 +204,15 @@ const Board = () => {
     if (moveSeq === 0) return;
     const move = lastMoveRef.current;
     if (!move) return;
+    const b = boardRef.current;
 
-    const from = getXYFromPoint(move.from);
-    const to = getXYFromPoint(move.to);
+    // Kaynaktan ayrılan taşın yığın indeksi = çıkıştan sonraki taş sayısı
+    const fromStack = (move.from === 'bar' || move.from === 'off') ? 0 : Math.abs(b[move.from]);
+    // Hedefe konan taş = ekleme sonrası en üstteki taş
+    const toStack = (move.to === 'off' || move.to === 'bar') ? 0 : Math.max(Math.abs(b[move.to]) - 1, 0);
+
+    const from = getCheckerXY(move.from, fromStack);
+    const to = getCheckerXY(move.to, toStack);
     if (!from || !to) return;
 
     setSlideColor(currentPlayerRef.current);
@@ -215,8 +220,8 @@ const Board = () => {
     setSlideVisible(true);
     Animated.timing(slidePos, {
       toValue: { x: to.x - CHECKER_SIZE / 2, y: to.y - CHECKER_SIZE / 2 },
-      duration: 220,
-      easing: Easing.out(Easing.quad),
+      duration: 200,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start(({ finished }) => { if (finished) setSlideVisible(false); });
   }, [moveSeq]);
@@ -352,7 +357,6 @@ const Board = () => {
             pointWidth={POINT_WIDTH}
             triangleHeight={TRIANGLE_HEIGHT}
             checkerSize={CHECKER_SIZE}
-            label={pointLabel(i)}
           />
         );
       })}
@@ -419,7 +423,7 @@ const Board = () => {
 
         {/* Kayan taş (hamle animasyonu) */}
         {slideVisible && (
-          <Animated.View style={[styles.floatingChecker, { transform: slidePos.getTranslateTransform() }]} pointerEvents="none">
+          <Animated.View style={[styles.slideChecker, { transform: slidePos.getTranslateTransform() }]} pointerEvents="none">
             <Checker color={slideColor} size={CHECKER_SIZE} />
           </Animated.View>
         )}
@@ -545,13 +549,6 @@ const styles = StyleSheet.create({
   pointDown: {
     justifyContent: 'flex-start',
   },
-  pointNumber: {
-    position: 'absolute',
-    color: 'rgba(42,21,9,0.55)',
-    fontSize: 9,
-    fontWeight: 'bold',
-    zIndex: 3,
-  },
   triangle: {
     width: 0,
     height: 0,
@@ -587,6 +584,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     zIndex: 200,
     opacity: 0.9,
+  },
+  slideChecker: {
+    position: 'absolute',
+    zIndex: 190,
   },
 });
 
