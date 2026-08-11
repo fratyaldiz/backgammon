@@ -51,6 +51,25 @@ export function getBarEntryPoint(dieValue, player) {
   return player === WHITE ? 24 - dieValue : dieValue - 1;
 }
 
+/**
+ * Oyuncunun bar'da taşı var ve rakip giriş bölgesinin (kendi evinin) altı
+ * noktasını da kapatmışsa hiçbir zar giriş sağlayamaz. Bu durumda tur
+ * tamamen kayıptır; zar atmanın anlamı yoktur.
+ */
+export function isClosedOut(board, bar, player) {
+  const barCount = player === WHITE ? bar.white : bar.black;
+  if (barCount === 0) return false;
+
+  // Giriş noktaları: WHITE 18-23, BLACK 0-5 (rakibin ev bölgesi)
+  const entryStart = player === WHITE ? 18 : 0;
+  for (let k = 0; k < 6; k++) {
+    const v = board[entryStart + k];
+    const oppCount = player === WHITE ? (v < 0 ? -v : 0) : (v > 0 ? v : 0);
+    if (oppCount < 2) return false;   // en az bir nokta açık
+  }
+  return true;
+}
+
 export function applyMove(board, bar, borneOff, move, player) {
   const newState = cloneGameState(board, bar, borneOff);
   const newBoard = newState.board;

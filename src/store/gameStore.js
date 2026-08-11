@@ -1,9 +1,9 @@
 import { create } from 'zustand';
-import { WHITE, BLACK, rollDice as rollDiceUtil, getMovesFromDice } from '../utils/diceUtils';
+import { WHITE, BLACK, rollDice as rollDiceUtil, rollDie, getMovesFromDice } from '../utils/diceUtils';
 import {
   createInitialBoard, cloneGameState,
   getValidFirstMoves, applyMove,
-  isGameOver, getAllLegalTurnSequences
+  isGameOver, isClosedOut
 } from '../utils/gameLogic';
 import { getAIMoves } from '../utils/aiPlayer';
 
@@ -28,6 +28,9 @@ const useGameStore = create((set, get) => ({
   showDoublesIndicator: false,
   turnFinished: false,
   turnInitialState: null,
+  openingDice: { player: null, ai: null },
+  openingRolling: false,
+  autoSkipCount: 0,
 
   // ─── OYUN BAŞLAT ─────────────────────────────
   startGame: (difficulty) => {
@@ -35,34 +38,81 @@ const useGameStore = create((set, get) => ({
       board: createInitialBoard(),
       bar: { white: 0, black: 0 },
       borneOff: { white: 0, black: 0 },
-      currentPlayer: WHITE,    // Beyaz her zaman ilk başlar
+      currentPlayer: WHITE,
       playerColor: BLACK,
       dice: null,
       remainingMoves: [],
       selectedPoint: null,
       validDestinations: [],
-      gamePhase: 'ai_thinking',  // Yapay zeka (beyaz) ilk oynar
+      gamePhase: 'opening_roll',   // Başlangıç: her iki taraf birer zar atar
       previousPhase: null,
       difficulty: difficulty || 'medium',
       winner: null,
-      message: 'Siyah taşlarla oynuyorsunuz. Rakip oynuyor...',
+      message: 'Başlangıç zarı: yüksek atan başlar.',
       moveHistory: [],
       lastMove: null,
       moveSeq: 0,
       showDoublesIndicator: false,
       turnFinished: false,
       turnInitialState: null,
+      openingDice: { player: null, ai: null },
+      openingRolling: false,
     });
-    // Yapay zeka ilk hamleyi yapar
-    setTimeout(() => get().executeAITurn(), 1000);
+  },
+
+  // ─── AÇILIŞ ZARI (kim başlayacak?) ───────────
+  // Her iki taraf birer zar atar; yüksek atan taraf yeni bir zarla oyuna başlar.
+  // Eşitlikte atış tekrarlanır.
+  rollOpeningDice: () => {
+    const { gamePhase, openingRolling, playerColor } = get();
+    if (gamePhase !== 'opening_roll' || openingRolling) return;
+
+    const playerDie = rollDie();
+    const aiDie = rollDie();
+    set({ openingDice: { player: playerDie, ai: aiDie }, openingRolling: true, message: '' });
+
+    setTimeout(() => {
+      if (get().gamePhase !== 'opening_roll') return;
+
+      if (playerDie === aiDie) {
+        set({
+          openingDice: { player: null, ai: null },
+          openingRolling: false,
+          message: 'Beraberlik! Tekrar atın.',
+        });
+        return;
+      }
+
+      const aiColor = playerColor === WHITE ? BLACK : WHITE;
+      const playerStarts = playerDie > aiDie;
+
+      set({
+        currentPlayer: playerStarts ? playerColor : aiColor,
+        openingRolling: false,
+        message: playerStarts ? 'Yüksek zar sizde — siz başlıyorsunuz.' : 'Rakip yüksek attı — rakip başlıyor.',
+      });
+
+      setTimeout(() => {
+        if (get().gamePhase !== 'opening_roll') return;
+        set({ openingDice: { player: null, ai: null } });
+
+        if (playerStarts) {
+          set({ gamePhase: 'rolling', message: '' });
+        } else {
+          set({ gamePhase: 'ai_thinking', message: 'Rakip düşünüyor...' });
+          setTimeout(() => get().executeAITurn(), 600);
+        }
+      }, 1300);
+    }, 900);
   },
 
   // ─── DURAKLAT / DEVAM ────────────────────────
   pauseGame: () => {
     const phase = get().gamePhase;
-    // 'ai_thinking' sırasında duraklatma yok: AI hamle zinciri (applyNext) faz
-    // değişince durur ve resume'da yeniden başlamaz — kalıcı kilide yol açar.
-    if (phase !== 'menu' && phase !== 'paused' && phase !== 'game_over' && phase !== 'ai_thinking') {
+    // Zamanlayıcıyla ilerleyen fazlarda duraklatma yok: zincir faz değişince
+    // durur ve resume'da yeniden başlamaz — kalıcı kilide yol açar.
+    const blocked = ['menu', 'paused', 'game_over', 'ai_thinking', 'opening_roll', 'closed_out'];
+    if (!blocked.includes(phase)) {
       set({ gamePhase: 'paused', previousPhase: phase });
     }
   },
@@ -81,6 +131,7 @@ const useGameStore = create((set, get) => ({
     const dice = rollDiceUtil();
     const remainingMoves = getMovesFromDice(dice[0], dice[1]);
     const { board, bar, borneOff } = get();
+    set({ autoSkipCount: 0 });   // oyuncu tekrar zar atabildi: sayaç sıfırlanır
 
     const validMoves = getValidFirstMoves(board, bar, borneOff, currentPlayer, remainingMoves);
 
@@ -229,6 +280,24 @@ const useGameStore = create((set, get) => ({
     });
 
     if (nextPlayer === playerColor) {
+      // Rakip tahtayı tamamen kapattıysa ve bar'da taşımız varsa hiçbir zar
+      // giriş sağlamaz — zar sormadan sırayı geçir. (Karşılıklı kilitlenmede
+      // otomatik geçiş yapılmaz, aksi halde sonsuz döngü olur.)
+      const { board, bar, autoSkipCount } = get();
+      const aiColor = playerColor === WHITE ? BLACK : WHITE;
+      const stuck = isClosedOut(board, bar, playerColor) && !isClosedOut(board, bar, aiColor);
+      // autoSkipCount: kuramsal bir kilitlenmede sonsuz döngüyü keser
+      if (stuck && autoSkipCount < 30) {
+        set({
+          gamePhase: 'closed_out',
+          autoSkipCount: autoSkipCount + 1,
+          message: 'Rakip tahtayı kapattı — giriş yok, sıra geçiyor.',
+        });
+        setTimeout(() => {
+          if (get().gamePhase === 'closed_out') get().endTurn();
+        }, 1500);
+        return;
+      }
       set({ gamePhase: 'rolling' });
     } else {
       set({ gamePhase: 'ai_thinking', message: 'Rakip düşünüyor...' });
@@ -289,6 +358,7 @@ const useGameStore = create((set, get) => ({
     remainingMoves: [], selectedPoint: null, validDestinations: [],
     winner: null, message: '', moveHistory: [], lastMove: null, moveSeq: 0,
     showDoublesIndicator: false, turnFinished: false, turnInitialState: null, previousPhase: null,
+    openingDice: { player: null, ai: null }, openingRolling: false,
   }),
   setDifficulty: (d) => set({ difficulty: d }),
   resetGame: () => get().startGame(get().difficulty),

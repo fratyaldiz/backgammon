@@ -3,7 +3,7 @@ import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import useGameStore from '../store/gameStore';
 import Board from '../components/Board';
-import Dice from '../components/Dice';
+import Dice, { Die } from '../components/Dice';
 import THEME from '../constants/theme';
 import { WHITE, BLACK } from '../utils/diceUtils';
 import { getPipCount } from '../utils/gameLogic';
@@ -49,8 +49,11 @@ const GameScreen = () => {
     board, bar, currentPlayer, playerColor, gamePhase, dice, remainingMoves, rollDice, 
     borneOff, message, winner, goToMenu, resetGame,
     turnFinished, moveHistory, undoMove, endTurn,
-    pauseGame, resumeGame
+    pauseGame, resumeGame,
+    openingDice, openingRolling, rollOpeningDice
   } = useGameStore();
+
+  const isOpeningRoll = gamePhase === 'opening_roll';
 
   const opponentColor = playerColor === WHITE ? BLACK : WHITE;
 
@@ -81,27 +84,62 @@ const GameScreen = () => {
       <View style={styles.boardWrapper}>
         <Board />
         
-        {/* Atılan Zarlar (SOL) */}
-        {dice && (
-          <View style={styles.diceOverlay}>
+        {/* SOL: rakibin açılış zarı, ya da oyundaki atılmış zarlar */}
+        {isOpeningRoll ? (
+          openingDice.ai !== null && (
+            <View style={styles.diceOverlay}>
+              <LinearGradient
+                colors={THEME.gradients.diceTray}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.diceTray}
+              >
+                <Text style={styles.openingLabel}>RAKİP</Text>
+                <Die value={openingDice.ai} isUsed={false} rolling={openingRolling} />
+              </LinearGradient>
+            </View>
+          )
+        ) : (
+          dice && (
+            <View style={styles.diceOverlay}>
+              <LinearGradient
+                colors={THEME.gradients.diceTray}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.diceTray}
+              >
+                <Dice
+                  dice={dice}
+                  remainingMoves={remainingMoves}
+                  rolling={false}
+                  onRoll={null}
+                />
+              </LinearGradient>
+            </View>
+          )
+        )}
+
+        {/* SAĞ: kendi açılış zarım + aksiyon butonları */}
+        <View style={styles.actionOverlay}>
+          {isOpeningRoll && openingDice.player !== null && (
             <LinearGradient
               colors={THEME.gradients.diceTray}
               start={{ x: 0, y: 0 }}
               end={{ x: 0, y: 1 }}
               style={styles.diceTray}
             >
-              <Dice
-                dice={dice}
-                remainingMoves={remainingMoves}
-                rolling={false}
-                onRoll={null}
-              />
+              <Text style={styles.openingLabel}>SİZ</Text>
+              <Die value={openingDice.player} isUsed={false} rolling={openingRolling} />
             </LinearGradient>
-          </View>
-        )}
+          )}
 
-        {/* Aksiyon Butonları (SAĞ) */}
-        <View style={styles.actionOverlay}>
+          {isOpeningRoll && openingDice.player === null && !openingRolling && (
+            <TouchableOpacity style={styles.rollButton} onPress={rollOpeningDice}>
+              <Ionicons name="dice" size={24} color={THEME.colors.textDark} />
+              <Text style={styles.rollButtonLabel}>ZAR AT</Text>
+            </TouchableOpacity>
+          )}
+
           {isPlayerTurn && gamePhase === 'rolling' && (
             <TouchableOpacity style={styles.rollButton} onPress={rollDice}>
               <Ionicons name="dice" size={24} color={THEME.colors.textDark} />
@@ -220,6 +258,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 6,
     elevation: 8,
+  },
+  openingLabel: {
+    color: THEME.colors.gold,
+    fontSize: 9,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+    marginBottom: 4,
   },
   actionOverlay: {
     position: 'absolute',
