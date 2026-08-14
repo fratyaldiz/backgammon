@@ -5,7 +5,7 @@ import useGameStore from '../store/gameStore';
 import THEME from '../constants/theme';
 
 const MenuScreen = () => {
-  const { startGame, difficulty, setDifficulty } = useGameStore();
+  const { startGame, difficulty, setDifficulty, hasSavedGame, continueGame, stats } = useGameStore();
   const [selectedDiff, setSelectedDiff] = useState(difficulty);
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const slideAnim = React.useRef(new Animated.Value(50)).current;
@@ -54,15 +54,35 @@ const MenuScreen = () => {
         </View>
       </Animated.View>
 
-      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }], alignItems: 'center' }}>
+        {hasSavedGame && (
+          <TouchableOpacity style={[styles.startButton, styles.continueButton]} onPress={continueGame}>
+            <LinearGradient
+              colors={[THEME.colors.goldLight, THEME.colors.gold]}
+              style={styles.startButtonGradient}
+            >
+              <Text style={[styles.startButtonText, styles.continueButtonText]}>DEVAM ET</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity style={styles.startButton} onPress={handleStart}>
           <LinearGradient
             colors={[THEME.colors.buttonHover, THEME.colors.buttonPrimary]}
             style={styles.startButtonGradient}
           >
-            <Text style={styles.startButtonText}>OYUNA BAŞLA</Text>
+            <Text style={styles.startButtonText}>
+              {hasSavedGame ? 'YENİ OYUN' : 'OYUNA BAŞLA'}
+            </Text>
           </LinearGradient>
         </TouchableOpacity>
+
+        {stats.played > 0 && (
+          <Text style={styles.statsLine}>
+            {stats.played} oyun · {stats.won} galibiyet · {stats.lost} mağlubiyet
+            {stats.marsWon > 0 ? ` · ${stats.marsWon} mars` : ''}
+          </Text>
+        )}
       </Animated.View>
     </LinearGradient>
   );
@@ -154,6 +174,19 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     letterSpacing: 2,
+  },
+  continueButton: {
+    marginBottom: 14,
+    shadowOpacity: 0.6,
+  },
+  continueButtonText: {
+    color: THEME.colors.textDark,
+  },
+  statsLine: {
+    color: THEME.colors.textSecondary,
+    fontSize: 12,
+    marginTop: 16,
+    letterSpacing: 0.5,
   },
 });
 

@@ -262,6 +262,17 @@ export function isGameOver(borneOff) {
   return { gameOver: false, winner: null };
 }
 
+/**
+ * Kaybeden hiç taş toplayamadıysa "mars" olur ve oyun iki kat sayılır.
+ * Döner: { type: 'normal' | 'mars', points: 1 | 2 }
+ */
+export function getWinType(borneOff, winner) {
+  const loserBorneOff = winner === WHITE ? borneOff.black : borneOff.white;
+  return loserBorneOff === 0
+    ? { type: 'mars', points: 2 }
+    : { type: 'normal', points: 1 };
+}
+
 export function getPipCount(board, bar, player) {
   let pips = 0;
   if (player === WHITE) {

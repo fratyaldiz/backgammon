@@ -49,8 +49,9 @@ const GameScreen = () => {
     board, bar, currentPlayer, playerColor, gamePhase, dice, remainingMoves, rollDice, 
     borneOff, message, winner, goToMenu, resetGame,
     turnFinished, moveHistory, undoMove, endTurn,
-    pauseGame, resumeGame,
-    openingDice, openingRolling, rollOpeningDice
+    pauseGame, resumeGame, isPaused,
+    openingDice, openingRolling, rollOpeningDice,
+    winType, winPoints, stats, settings, toggleHaptics
   } = useGameStore();
 
   const isOpeningRoll = gamePhase === 'opening_roll';
@@ -183,8 +184,25 @@ const GameScreen = () => {
         <View style={styles.overlay}>
           <View style={styles.overlayBox}>
             <Text style={styles.overlayTitle}>
-              {winner === playerColor ? 'Tebrikler! Kazandınız!' : 'Kaybettiniz!'}
+              {winner === playerColor ? 'Kazandınız!' : 'Kaybettiniz'}
             </Text>
+            {winType === 'mars' && (
+              <View style={styles.marsBadge}>
+                <Text style={styles.marsText}>MARS · {winPoints} PUAN</Text>
+              </View>
+            )}
+            <Text style={styles.overlaySubtitle}>
+              {winType === 'mars'
+                ? (winner === playerColor
+                    ? 'Rakip hiç taş toplayamadı.'
+                    : 'Hiç taş toplayamadınız.')
+                : `${winPoints} puan`}
+            </Text>
+            <View style={styles.statsRow}>
+              <Text style={styles.statsChip}>Oynanan {stats.played}</Text>
+              <Text style={styles.statsChip}>Galibiyet {stats.won}</Text>
+              <Text style={styles.statsChip}>Mağlubiyet {stats.lost}</Text>
+            </View>
             <TouchableOpacity style={styles.overlayBtn} onPress={resetGame}>
               <Text style={styles.overlayBtnText}>Yeni Oyun</Text>
             </TouchableOpacity>
@@ -195,14 +213,30 @@ const GameScreen = () => {
         </View>
       )}
 
-      {/* Duraklatma Overlay */}
-      {gamePhase === 'paused' && (
+      {/* Duraklatma Overlay — oyun fazından bağımsız, her an açılabilir */}
+      {isPaused && gamePhase !== 'game_over' && (
         <View style={styles.overlay}>
           <View style={styles.overlayBox}>
-            <Text style={styles.overlayTitle}>OYUN DURAKLATILDI</Text>
+            <Text style={styles.overlayTitle}>MENÜ</Text>
             <TouchableOpacity style={styles.overlayBtn} onPress={resumeGame}>
               <Text style={styles.overlayBtnText}>Devam Et</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity style={styles.settingRow} onPress={toggleHaptics}>
+              <Ionicons
+                name={settings.haptics ? 'checkbox' : 'square-outline'}
+                size={20}
+                color={THEME.colors.goldLight}
+              />
+              <Text style={styles.settingText}>Titreşim</Text>
+            </TouchableOpacity>
+
+            <View style={styles.statsRow}>
+              <Text style={styles.statsChip}>G {stats.won}</Text>
+              <Text style={styles.statsChip}>M {stats.lost}</Text>
+              <Text style={styles.statsChip}>Mars {stats.marsWon}</Text>
+            </View>
+
             <TouchableOpacity style={styles.overlayBtn} onPress={resetGame}>
               <Text style={styles.overlayBtnText}>Yeni Oyun</Text>
             </TouchableOpacity>
@@ -435,8 +469,54 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: THEME.colors.gold,
-    marginBottom: 25,
+    marginBottom: 12,
     textAlign: 'center',
+  },
+  overlaySubtitle: {
+    fontSize: 12,
+    color: THEME.colors.textSecondary,
+    marginBottom: 14,
+    textAlign: 'center',
+  },
+  marsBadge: {
+    backgroundColor: THEME.colors.danger,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#FFF',
+  },
+  marsText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  statsChip: {
+    color: THEME.colors.textSecondary,
+    fontSize: 11,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+    paddingVertical: 4,
+  },
+  settingText: {
+    color: THEME.colors.textPrimary,
+    fontSize: 14,
   },
   overlayBtn: {
     backgroundColor: THEME.colors.buttonPrimary,

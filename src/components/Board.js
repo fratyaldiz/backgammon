@@ -110,6 +110,7 @@ const Board = () => {
   const currentPlayer = useGameStore(s => s.currentPlayer);
   const playerColor = useGameStore(s => s.playerColor);
   const gamePhase = useGameStore(s => s.gamePhase);
+  const isPaused = useGameStore(s => s.isPaused);
   const remainingMoves = useGameStore(s => s.remainingMoves);
   const lastMove = useGameStore(s => s.lastMove);
   const moveSeq = useGameStore(s => s.moveSeq);
@@ -142,7 +143,7 @@ const Board = () => {
 
   // PanResponder'ın güncel store değerlerine erişimi için ref
   const storeRef = useRef({});
-  storeRef.current = { board, bar, currentPlayer, playerColor, gamePhase, remainingMoves, POINT_WIDTH, CHECKER_SIZE };
+  storeRef.current = { board, bar, currentPlayer, playerColor, gamePhase, remainingMoves, isPaused, POINT_WIDTH, CHECKER_SIZE };
 
   // ─── Koordinattan nokta indeksi bulma ─────────
   // LAYOUT (Siyah oyuncu perspektifi - ev sağ alt):
@@ -260,7 +261,7 @@ const Board = () => {
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => {
       const s = storeRef.current;
-      return s.gamePhase === 'moving' && s.currentPlayer === s.playerColor;
+      return !s.isPaused && s.gamePhase === 'moving' && s.currentPlayer === s.playerColor;
     },
     onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > 5 || Math.abs(gs.dy) > 5,
 
