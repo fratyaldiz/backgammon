@@ -1,16 +1,36 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, Animated, Easing } from 'react-native';
 import THEME from '../constants/theme';
+import { DICE_SPIN_MS } from '../utils/diceUtils';
+
+const HALF_SPIN = DICE_SPIN_MS / 2;
 
 const Die = ({ value, isUsed, rolling, size = THEME.sizes.diceSize }) => {
   const rotation = React.useRef(new Animated.Value(0)).current;
+
+  // Dönerken gerçek sonuç gizlenir: yüzler hızla değişir, atış bitince
+  // asıl değer ortaya çıkar. Aksi halde sonuç animasyon boyunca okunabilir.
+  const [face, setFace] = useState(value);
+
+  useEffect(() => {
+    if (!rolling) { setFace(value); return; }
+    let last = value;
+    const id = setInterval(() => {
+      // Arka arkaya aynı yüz gelmesin, dönme hissi kaybolmasın
+      let next;
+      do { next = 1 + Math.floor(Math.random() * 6); } while (next === last);
+      last = next;
+      setFace(next);
+    }, 70);
+    return () => clearInterval(id);
+  }, [rolling, value]);
 
   useEffect(() => {
     if (rolling) {
       rotation.setValue(0);
       Animated.sequence([
-        Animated.timing(rotation, { toValue: 1, duration: 400, easing: Easing.linear, useNativeDriver: true }),
-        Animated.timing(rotation, { toValue: 2, duration: 400, easing: Easing.out(Easing.ease), useNativeDriver: true })
+        Animated.timing(rotation, { toValue: 1, duration: HALF_SPIN, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(rotation, { toValue: 2, duration: HALF_SPIN, easing: Easing.out(Easing.ease), useNativeDriver: true })
       ]).start();
     } else {
       Animated.timing(rotation, { toValue: 0, duration: 100, useNativeDriver: true }).start();
@@ -24,7 +44,8 @@ const Die = ({ value, isUsed, rolling, size = THEME.sizes.diceSize }) => {
 
   const animatedStyle = {
     transform: [{ rotate: spin }],
-    opacity: isUsed ? 0.3 : 1,
+    // Dönerken sönükleştirme yok: kullanılmış zar ipucu vermesin
+    opacity: !rolling && isUsed ? 0.3 : 1,
   };
   const dotSize = Math.max(size * 0.19, 4);
 
@@ -40,7 +61,8 @@ const Die = ({ value, isUsed, rolling, size = THEME.sizes.diceSize }) => {
     6: [[0.2, 0.2], [0.2, 0.5], [0.2, 0.8], [0.8, 0.2], [0.8, 0.5], [0.8, 0.8]],
   };
 
-  const currentPositions = dotPositions[value] || [];
+  // Dönerken gösterilen yüz gerçek sonuç değildir
+  const currentPositions = dotPositions[rolling ? face : value] || [];
 
   return (
     <Animated.View style={[styles.die, { width: size, height: size, borderRadius: size * 0.2 }, animatedStyle]}>

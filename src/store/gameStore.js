@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { WHITE, BLACK, rollDice as rollDiceUtil, rollDie, getMovesFromDice } from '../utils/diceUtils';
+import { WHITE, BLACK, rollDice as rollDiceUtil, rollDie, getMovesFromDice, DICE_SPIN_MS } from '../utils/diceUtils';
 import {
   createInitialBoard, cloneGameState,
   getValidFirstMoves, applyMove,
@@ -297,42 +297,39 @@ const useGameStore = create((set, get) => {
       const remainingMoves = getMovesFromDice(dice[0], dice[1]);
       const { board, bar, borneOff } = get();
       haptics.roll(); sfx.dice();
-      // autoSkipCount sıfırlanır: oyuncu tekrar zar atabildi
-      set({ autoSkipCount: 0, diceRolling: true });
-      schedule(() => set({ diceRolling: false }), 850);
 
-      const validMoves = getValidFirstMoves(board, bar, borneOff, currentPlayer, remainingMoves);
+      // Zar dönerken sonuç gizlidir; "hamle yok" uyarısı da animasyon
+      // bitmeden gösterilmez, aksi halde atışı önceden ele verir.
+      set({
+        dice, remainingMoves,
+        gamePhase: 'moving',
+        message: '',
+        showDoublesIndicator: dice[0] === dice[1],
+        turnFinished: false,
+        diceRolling: true,
+        autoSkipCount: 0,   // oyuncu tekrar zar atabildi
+        turnInitialState: {
+          board: [...board],
+          bar: { ...bar },
+          borneOff: { ...borneOff },
+          remainingMoves: [...remainingMoves],
+        },
+      });
 
-      if (validMoves.length === 0) {
-        set({
-          dice, remainingMoves,
-          message: 'Hamle yok! Turu bitirebilirsiniz.',
-          gamePhase: 'moving',
-          showDoublesIndicator: dice[0] === dice[1],
-          turnFinished: true,
-        });
-      } else {
-        set({
-          dice, remainingMoves,
-          gamePhase: 'moving',
-          message: '',
-          showDoublesIndicator: dice[0] === dice[1],
-          turnFinished: false,
-          turnInitialState: {
-            board: [...board],
-            bar: { ...bar },
-            borneOff: { ...borneOff },
-            remainingMoves: [...remainingMoves],
-          },
-        });
-      }
-      persist();
+      schedule(() => {
+        set({ diceRolling: false });
+        const validMoves = getValidFirstMoves(board, bar, borneOff, currentPlayer, remainingMoves);
+        if (validMoves.length === 0) {
+          set({ message: 'Hamle yok! Turu bitirebilirsiniz.', turnFinished: true });
+        }
+        persist();
+      }, DICE_SPIN_MS + 60);
     },
 
     // ─── DOKUNARAK OTOMATİK HAREKET ──────────────
     selectPoint: (pointIndex) => {
-      const { board, bar, currentPlayer, playerColor, gamePhase, remainingMoves, borneOff, turnFinished, isPaused } = get();
-      if (isPaused || gamePhase !== 'moving' || currentPlayer !== playerColor || turnFinished) return;
+      const { board, bar, currentPlayer, playerColor, gamePhase, remainingMoves, borneOff, turnFinished, isPaused, diceRolling } = get();
+      if (isPaused || diceRolling || gamePhase !== 'moving' || currentPlayer !== playerColor || turnFinished) return;
 
       const validMoves = getValidFirstMoves(board, bar, borneOff, currentPlayer, remainingMoves);
 
@@ -354,8 +351,8 @@ const useGameStore = create((set, get) => {
 
     // ─── SÜRÜKLE-BIRAK HAMLESİ ───────────────────
     moveToDestination: (fromIndex, toIndex) => {
-      const { board, bar, borneOff, currentPlayer, playerColor, gamePhase, remainingMoves, turnFinished, isPaused } = get();
-      if (isPaused || gamePhase !== 'moving' || currentPlayer !== playerColor || turnFinished) return;
+      const { board, bar, borneOff, currentPlayer, playerColor, gamePhase, remainingMoves, turnFinished, isPaused, diceRolling } = get();
+      if (isPaused || diceRolling || gamePhase !== 'moving' || currentPlayer !== playerColor || turnFinished) return;
 
       const validMoves = getValidFirstMoves(board, bar, borneOff, currentPlayer, remainingMoves);
       const isValid = validMoves.some(m => m.from === fromIndex && m.to === toIndex);
@@ -477,8 +474,10 @@ const useGameStore = create((set, get) => {
       const remainingMoves = getMovesFromDice(dice[0], dice[1]);
       haptics.roll(); sfx.dice();
       set({ dice, remainingMoves, showDoublesIndicator: dice[0] === dice[1], diceRolling: true });
-      schedule(() => set({ diceRolling: false }), 850);
+      schedule(() => set({ diceRolling: false }), DICE_SPIN_MS + 60);
 
+      // Yapay zeka hamlesine zar animasyonu bitmeden başlamaz; sonuç önce
+      // görünür, kısa bir duraklamadan sonra taşlar oynanır.
       schedule(() => {
         let moves;
         try { moves = getAIMoves(board, bar, borneOff, currentPlayer, remainingMoves, difficulty); }
@@ -518,7 +517,7 @@ const useGameStore = create((set, get) => {
           }
         };
         applyNext();
-      }, 600);
+      }, DICE_SPIN_MS + 400);
     },
 
     // ─── OYUN SONU ───────────────────────────────
