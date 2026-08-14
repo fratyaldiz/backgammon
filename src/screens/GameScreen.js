@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import useGameStore from '../store/gameStore';
 import Board from '../components/Board';
@@ -8,6 +9,7 @@ import THEME from '../constants/theme';
 import { WHITE, BLACK } from '../utils/diceUtils';
 import { getPipCount } from '../utils/gameLogic';
 import { getTable, formatCoins } from '../utils/economy';
+import { makeScale, clamp } from '../utils/layout';
 import { Ionicons } from '@expo/vector-icons';
 
 const PlayerInfo = ({ name, color, isActive, pips, borneOff }) => {
@@ -59,6 +61,15 @@ const GameScreen = () => {
   const isOpeningRoll = gamePhase === 'opening_roll';
   const table = getTable(tableId);
 
+  // Yerleşim ölçüleri cihaza göre oranlanır; çentik/ev göstergesi payları
+  // güvenli alandan alınır, böylece hiçbir cihazda içerik kırpılmaz.
+  const { width: winW, height: winH } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { s } = makeScale(winW, winH);
+  const usableW = winW - insets.left - insets.right;
+  // Kenar çubukları genişliğin oranı; çok dar/çok geniş olmaması için sınırlı
+  const sidebarW = clamp(usableW * 0.14, 76, 150);
+
   const opponentColor = playerColor === WHITE ? BLACK : WHITE;
 
   const playerPips = getPipCount(board, bar, playerColor);
@@ -71,9 +82,9 @@ const GameScreen = () => {
   const isPlayerTurn = currentPlayer === playerColor;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingLeft: insets.left + s(8), paddingRight: insets.right + s(8), paddingTop: insets.top + s(4), paddingBottom: insets.bottom + s(4) }]}>
       {/* Sol Kenar - Oyuncu Bilgileri */}
-      <View style={styles.sidebar}>
+      <View style={[styles.sidebar, { width: sidebarW }]}>
         <PlayerInfo 
           name={playerName}
           color={playerColor}
@@ -168,7 +179,7 @@ const GameScreen = () => {
       </View>
 
       {/* Sağ Kenar - Rakip Bilgileri */}
-      <View style={styles.sidebar}>
+      <View style={[styles.sidebar, { width: sidebarW }]}>
         <PlayerInfo 
           name="Rakip"
           color={opponentColor}
@@ -296,10 +307,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 10,
+    // dolgu güvenli alana göre bileşende veriliyor
   },
   sidebar: {
-    width: 100,
+    // genişlik oransal, bileşende veriliyor
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',

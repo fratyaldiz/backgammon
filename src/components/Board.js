@@ -1,10 +1,11 @@
 import React, { useRef, useState, useMemo, useEffect } from 'react';
-import { View, StyleSheet, Text, useWindowDimensions, PanResponder, Animated, Easing } from 'react-native';
+import { View, StyleSheet, Text, PanResponder, Animated, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import useGameStore from '../store/gameStore';
 import Checker from './Checker';
 import THEME from '../constants/theme';
 import { WHITE, BLACK } from '../utils/diceUtils';
+import { clamp } from '../utils/layout';
 
 // ─── Point (Üçgen) Bileşeni ─────────────────────
 const Point = ({ index, isUp, checkers, owner, isSelected, isDestination, pointWidth, triangleHeight, checkerSize }) => {
@@ -66,29 +67,43 @@ const Point = ({ index, isUp, checkers, owner, isSelected, isDestination, pointW
   );
 };
 
+/**
+ * Tahta ölçüleri yalnızca ölçülen kapsayıcıdan türetilir.
+ *
+ * Önceki sürüm ekran genişliğinden ve kenar çubuğu/dolgu için sabit
+ * varsayımlardan hesap yapıyordu; gerçek kapsayıcı farklı olduğu için
+ * çizim ile dokunma testi birbirini tutmuyor, cihaza göre kayma
+ * oluşuyordu. Ölçüm tabanlı hesap her cihazda birebir tutar.
+ */
+export function computeBoardMetrics(contentW, contentH) {
+  const bearOffGap = 4;
+  const bearOffW = clamp(contentW * 0.062, 26, 72);
+  const mainW = contentW - bearOffW - bearOffGap;
+
+  // Taş boyutu ile bar genişliği birbirine bağlı: bir ön hesapla çöz
+  const estPointW = (mainW - 46) / 12;
+  const estChecker = Math.min(estPointW * 0.86, contentH * 0.115);
+  const barW = clamp(Math.max(estChecker + 12, mainW * 0.045), 32, 84);
+
+  // Kesirli genişlik: 12 üçgen + bar tam olarak mainW'yi doldurur, artık kalmaz
+  const pointW = (mainW - barW) / 12;
+  const checkerSize = Math.max(Math.min(pointW * 0.86, contentH * 0.115), 12);
+  const triangleH = contentH * 0.44;
+
+  return { bearOffW, bearOffGap, mainW, barW, pointW, checkerSize, triangleH, contentW, contentH };
+}
+
 // ─── Tahta Bileşeni ─────────────────────────────
 const Board = () => {
-  const { width, height } = useWindowDimensions();
+  // Kapsayıcının gerçek ölçüsü; ölçülene kadar tahta çizilmez
+  const [box, setBox] = useState(null);
+  const m = box ? computeBoardMetrics(box.width, box.height) : null;
 
-  // Dinamik boyutlandırma
-  const SIDEBAR_WIDTH = 200;
-  const PADDING = 24;
-  const BEAR_OFF_W = THEME.sizes.bearOffWidth;
-  const TRIANGLE_HEIGHT = height * 0.42;
-
-  // Bar genişliği taş boyutuna bağlı, taş boyutu da bar genişliğine — bir kez
-  // ön hesap yapıp bar'ı tam boyutlu taşa göre genişletiyor, sonra üçgen
-  // genişliğini kalan alana göre yeniden hesaplıyoruz.
-  const sizeFor = (barW) => {
-    const available = width - SIDEBAR_WIDTH - PADDING - BEAR_OFF_W - barW;
-    const pointWidth = Math.max(Math.floor((available / 2) / 6), 20);
-    return { pointWidth, checkerSize: Math.max(Math.floor(pointWidth * 0.9), 18) };
-  };
-
-  const firstPass = sizeFor(THEME.sizes.barWidth);
-  // Bar, kırık taşı tam boyutta ve nefes payıyla barındıracak kadar geniş
-  const BAR_W = Math.max(THEME.sizes.barWidth, firstPass.checkerSize + 12);
-  const { pointWidth: POINT_WIDTH, checkerSize: CHECKER_SIZE } = sizeFor(BAR_W);
+  const POINT_WIDTH = m ? m.pointW : 0;
+  const CHECKER_SIZE = m ? m.checkerSize : 0;
+  const BAR_W = m ? m.barW : 0;
+  const BEAR_OFF_W = m ? m.bearOffW : 0;
+  const TRIANGLE_HEIGHT = m ? m.triangleH : 0;
   const BAR_CHECKER_SIZE = CHECKER_SIZE;   // kırık taş normal taşla aynı boyutta
 
   // Taşlar tam boyutta olduğu için çok sayıda kırık taş bar'a sığmayabilir;
@@ -391,9 +406,21 @@ const Board = () => {
       end={{ x: 1, y: 1 }}
       style={styles.boardContainer}
     >
+      {/* Ölçüm alanı: tüm boyutlar buradan türetilir */}
+      <View
+        style={styles.content}
+        onLayout={e => {
+          const { width: w, height: h } = e.nativeEvent.layout;
+          if (!box || Math.abs(box.width - w) > 0.5 || Math.abs(box.height - h) > 0.5) {
+            setBox({ width: w, height: h });
+          }
+        }}
+      >
+      {!m ? null : (
+      <>
       {/* Ana Tahta */}
       <View
-        style={styles.mainBoard}
+        style={[styles.mainBoard, { width: m.mainW }]}
         onLayout={e => { boardLayoutRef.current = e.nativeEvent.layout; }}
       >
         {/* Ahşap yüzey gradyanı */}
@@ -466,20 +493,23 @@ const Board = () => {
         colors={THEME.gradients.barSurface}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
-        style={styles.bearOffArea}
+        style={[styles.bearOffArea, { width: BEAR_OFF_W, marginLeft: m.bearOffGap }]}
       >
         <View style={styles.bearOffBox}>
-          <Text style={styles.bearOffLabel}>Beyaz</Text>
-          <Text style={styles.bearOffText}>{borneOff.white}</Text>
-          {borneOff.white > 0 && <Checker color={WHITE} size={Math.min(CHECKER_SIZE, 22)} />}
+          <Text style={[styles.bearOffLabel, { fontSize: clamp(BEAR_OFF_W * 0.24, 8, 13) }]}>Beyaz</Text>
+          <Text style={[styles.bearOffText, { fontSize: clamp(BEAR_OFF_W * 0.4, 12, 22) }]}>{borneOff.white}</Text>
+          {borneOff.white > 0 && <Checker color={WHITE} size={Math.min(CHECKER_SIZE, BEAR_OFF_W - 8)} />}
         </View>
         <View style={styles.bearOffDivider} />
         <View style={styles.bearOffBox}>
-          <Text style={styles.bearOffLabel}>Siyah</Text>
-          <Text style={styles.bearOffText}>{borneOff.black}</Text>
-          {borneOff.black > 0 && <Checker color={BLACK} size={Math.min(CHECKER_SIZE, 22)} />}
+          <Text style={[styles.bearOffLabel, { fontSize: clamp(BEAR_OFF_W * 0.24, 8, 13) }]}>Siyah</Text>
+          <Text style={[styles.bearOffText, { fontSize: clamp(BEAR_OFF_W * 0.4, 12, 22) }]}>{borneOff.black}</Text>
+          {borneOff.black > 0 && <Checker color={BLACK} size={Math.min(CHECKER_SIZE, BEAR_OFF_W - 8)} />}
         </View>
       </LinearGradient>
+      </>
+      )}
+      </View>
     </LinearGradient>
   );
 };
@@ -501,8 +531,12 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 12,
   },
-  mainBoard: {
+  content: {
     flex: 1,
+    flexDirection: 'row',
+  },
+  mainBoard: {
+    height: '100%',
     flexDirection: 'row',
     backgroundColor: THEME.colors.boardLight,
     position: 'relative',
@@ -513,7 +547,9 @@ const styles = StyleSheet.create({
   },
   quadrant: {
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
+    // Üçgen genişlikleri alanı tam doldurur; artık boşluk dağıtılmaz,
+    // böylece çizim ile dokunma testi birebir örtüşür.
+    justifyContent: 'flex-start',
     height: '47%',
   },
   bar: {
@@ -534,8 +570,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   bearOffArea: {
-    width: THEME.sizes.bearOffWidth,
-    marginLeft: 4,
+    height: '100%',
     justifyContent: 'space-around',
     paddingVertical: 8,
     alignItems: 'center',

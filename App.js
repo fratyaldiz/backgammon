@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar } from 'expo-status-bar';
 import useGameStore from './src/store/gameStore';
@@ -21,10 +22,12 @@ export default function App() {
   }, [initApp]);
 
   return (
-    <GestureHandlerRootView style={styles.container}>
-      <StatusBar hidden />
-      {gamePhase === 'menu' ? <MenuScreen /> : <GameScreen />}
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={styles.container}>
+        <StatusBar hidden />
+        {gamePhase === 'menu' ? <MenuScreen /> : <GameScreen />}
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 

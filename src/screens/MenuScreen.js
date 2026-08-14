@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, ScrollView, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import useGameStore from '../store/gameStore';
@@ -8,6 +9,7 @@ import {
   TABLES, minBalanceFor, canPlay, bonusStatus,
   formatRemaining, formatCoins, BONUS_AMOUNT
 } from '../utils/economy';
+import { makeScale, clamp } from '../utils/layout';
 
 const MenuScreen = () => {
   const {
@@ -32,6 +34,15 @@ const MenuScreen = () => {
     ]).start();
   }, [fadeAnim, slideAnim]);
 
+  // Cihaza gore oranlama + guvenli alan (centik/ev gostergesi)
+  const { width: winW, height: winH } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { s: sc } = makeScale(winW, winH);
+  const usableW = winW - insets.left - insets.right;
+  // Uc masa karti + bosluklar kullanilabilir genisligi asmasin
+  const cardGap = sc(10);
+  const cardW = clamp((usableW - sc(48) - cardGap * 2) / 3, 96, 190);
+
   const bonus = bonusStatus(lastBonusAt, now);
   const selected = TABLES.find(t => t.id === tableId) || TABLES[1];
   const affordable = canPlay(balance, selected);
@@ -39,7 +50,7 @@ const MenuScreen = () => {
   return (
     <LinearGradient colors={['#1a0e08', '#2A1509', '#0d0704']} style={styles.container}>
       {/* Üst şerit: bakiye ve ödül */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { top: insets.top + sc(8), left: insets.left + sc(14), right: insets.right + sc(14) }]}>
         <View style={styles.coinBox}>
           <Ionicons name="cash" size={18} color={THEME.colors.gold} />
           <Text style={styles.coinText}>{formatCoins(balance)}</Text>
@@ -58,22 +69,22 @@ const MenuScreen = () => {
         )}
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + sc(46), paddingBottom: insets.bottom + sc(14), paddingHorizontal: Math.max(insets.left, insets.right) + sc(12) }]} showsVerticalScrollIndicator={false}>
         <Animated.View style={[styles.titleContainer, { opacity: fadeAnim }]}>
-          <Text style={styles.title}>TAVLA</Text>
+          <Text style={[styles.title, { fontSize: sc(44), letterSpacing: sc(10) }]}>TAVLA</Text>
           <Text style={styles.subtitle}>Backgammon</Text>
         </Animated.View>
 
         <Animated.View style={[styles.tablesWrap, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <Text style={styles.sectionTitle}>Masa Seç</Text>
-          <View style={styles.tableRow}>
+          <View style={[styles.tableRow, { gap: cardGap }]}>
             {TABLES.map(t => {
               const ok = canPlay(balance, t);
               const isSel = t.id === tableId;
               return (
                 <TouchableOpacity
                   key={t.id}
-                  style={[styles.tableCard, isSel && styles.tableCardSelected, !ok && styles.tableCardLocked]}
+                  style={[styles.tableCard, { width: cardW }, isSel && styles.tableCardSelected, !ok && styles.tableCardLocked]}
                   onPress={() => setTable(t.id)}
                   disabled={!ok}
                 >
@@ -98,7 +109,7 @@ const MenuScreen = () => {
 
         <Animated.View style={[styles.actions, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           {hasSavedGame && (
-            <TouchableOpacity style={styles.button} onPress={continueGame}>
+            <TouchableOpacity style={[styles.button, { width: clamp(usableW * 0.34, 190, 300) }]} onPress={continueGame}>
               <LinearGradient colors={[THEME.colors.goldLight, THEME.colors.gold]} style={styles.buttonInner}>
                 <Text style={[styles.buttonText, styles.buttonTextDark]}>DEVAM ET</Text>
               </LinearGradient>
@@ -106,7 +117,7 @@ const MenuScreen = () => {
           )}
 
           <TouchableOpacity
-            style={[styles.button, !affordable && styles.buttonDisabled]}
+            style={[styles.button, { width: clamp(usableW * 0.34, 190, 300) }, !affordable && styles.buttonDisabled]}
             onPress={() => startGame(selected.difficulty, selected.id)}
             disabled={!affordable}
           >
@@ -152,12 +163,10 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 46,
-    paddingBottom: 16,
+    // dolgu guvenli alana gore bilesende veriliyor
   },
   topBar: {
     position: 'absolute',
-    top: 10, left: 16, right: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -212,13 +221,11 @@ const styles = StyleSheet.create({
   },
   titleContainer: { alignItems: 'center', marginBottom: 18 },
   title: {
-    fontSize: 46,
     fontWeight: 'bold',
     color: THEME.colors.gold,
     textShadowColor: 'rgba(0,0,0,0.75)',
     textShadowOffset: { width: -1, height: 1 },
     textShadowRadius: 10,
-    letterSpacing: 10,
     fontFamily: THEME.fonts.heading,
   },
   subtitle: {
@@ -233,7 +240,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     letterSpacing: 1,
   },
-  tableRow: { flexDirection: 'row', gap: 12 },
+  tableRow: { flexDirection: 'row' },
   tableCard: {
     backgroundColor: 'rgba(0,0,0,0.5)',
     paddingVertical: 10,
@@ -241,7 +248,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderColor: '#3a2a18',
-    width: 132,
     alignItems: 'center',
   },
   tableCardSelected: {
@@ -276,7 +282,6 @@ const styles = StyleSheet.create({
   },
   actions: { alignItems: 'center' },
   button: {
-    width: 230,
     borderRadius: 26,
     overflow: 'hidden',
     marginBottom: 10,
