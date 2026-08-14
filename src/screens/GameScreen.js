@@ -28,7 +28,7 @@ const PlayerInfo = ({ name, color, isActive, pips, borneOff, avatarSize, font })
     >
       {isActive && (
         <View style={styles.turnBadge}>
-          <Text style={styles.turnBadgeText}>SIRA</Text>
+          <Text style={[styles.turnBadgeText, { fontSize: font.badge }]}>SIRA</Text>
         </View>
       )}
 
@@ -66,7 +66,7 @@ const GameScreen = () => {
     borneOff, message, winner, goToMenu, resetGame,
     turnFinished, moveHistory, undoMove, endTurn,
     pauseGame, resumeGame, isPaused,
-    openingDice, openingRolling, rollOpeningDice,
+    openingDice, openingRolling, rollOpeningDice, diceRolling,
     winType, winPoints, stats, settings, toggleHaptics, toggleSound,
     balance, stake, lastPayout, tableId
   } = useGameStore();
@@ -88,7 +88,14 @@ const GameScreen = () => {
     name: clamp(sidebarW * 0.105, 8, 12),
     label: clamp(sidebarW * 0.085, 7, 10),
     value: clamp(sidebarW * 0.10, 8, 12),
+    // "SIRA" rozeti: okunur olsun ama kartı bastırmasın
+    badge: clamp(sidebarW * 0.115, 9.5, 13),
   };
+  // Zar ve buton ölçüleri de ekranla birlikte oranlanır
+  const dieSize = clamp(winH * 0.085, 26, 46);
+  const labelFont = clamp(winH * 0.024, 8, 12);
+  const iconSize = clamp(winH * 0.055, 18, 28);
+  const btnFont = clamp(winH * 0.026, 9, 13);
 
   const opponentColor = playerColor === WHITE ? BLACK : WHITE;
 
@@ -114,14 +121,14 @@ const GameScreen = () => {
           avatarSize={avatarSize}
           font={font}
         />
-        {message ? <Text style={styles.messageText}>{message}</Text> : null}
+        {message ? <Text style={[styles.messageText, { fontSize: font.label * 1.15 }]}>{message}</Text> : null}
       </View>
 
       {/* Orta Alan - Tahta */}
       <View style={styles.boardWrapper}>
         <Board />
         
-        {/* SOL: rakibin açılış zarı, ya da oyundaki atılmış zarlar */}
+        {/* SOL BÖLME — rakibin zarları (açılışta da, turlarda da aynı yer) */}
         {isOpeningRoll ? (
           openingDice.ai !== null && (
             <View style={styles.diceOverlay}>
@@ -129,72 +136,90 @@ const GameScreen = () => {
                 colors={THEME.gradients.diceTray}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 0, y: 1 }}
-                style={styles.diceTray}
+                style={[styles.diceTray, { padding: s(7), borderRadius: s(13) }]}
               >
-                <Text style={styles.openingLabel}>RAKİP</Text>
-                <Die value={openingDice.ai} isUsed={false} rolling={openingRolling} />
+                <Text style={[styles.openingLabel, { fontSize: labelFont }]}>RAKİP</Text>
+                <Die value={openingDice.ai} isUsed={false} rolling={openingRolling} size={dieSize} />
               </LinearGradient>
             </View>
           )
         ) : (
-          dice && (
+          dice && !isPlayerTurn && (
             <View style={styles.diceOverlay}>
               <LinearGradient
                 colors={THEME.gradients.diceTray}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 0, y: 1 }}
-                style={styles.diceTray}
+                style={[styles.diceTray, { padding: s(7), borderRadius: s(13) }]}
               >
                 <Dice
                   dice={dice}
                   remainingMoves={remainingMoves}
-                  rolling={false}
+                  rolling={diceRolling}
                   onRoll={null}
+                  size={dieSize}
                 />
               </LinearGradient>
             </View>
           )
         )}
 
-        {/* SAĞ: kendi açılış zarım + aksiyon butonları */}
+        {/* SAĞ BÖLME — kendi zarlarım (açılışta da, turlarda da aynı yer) + butonlar */}
         <View style={styles.actionOverlay}>
           {isOpeningRoll && openingDice.player !== null && (
             <LinearGradient
               colors={THEME.gradients.diceTray}
               start={{ x: 0, y: 0 }}
               end={{ x: 0, y: 1 }}
-              style={styles.diceTray}
+              style={[styles.diceTray, { padding: s(7), borderRadius: s(13) }]}
             >
-              <Text style={styles.openingLabel}>SİZ</Text>
-              <Die value={openingDice.player} isUsed={false} rolling={openingRolling} />
+              <Text style={[styles.openingLabel, { fontSize: labelFont }]}>SİZ</Text>
+              <Die value={openingDice.player} isUsed={false} rolling={openingRolling} size={dieSize} />
+            </LinearGradient>
+          )}
+
+          {!isOpeningRoll && dice && isPlayerTurn && (
+            <LinearGradient
+              colors={THEME.gradients.diceTray}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={[styles.diceTray, { padding: s(7), borderRadius: s(13) }]}
+            >
+              <Dice
+                dice={dice}
+                remainingMoves={remainingMoves}
+                rolling={diceRolling}
+                onRoll={null}
+                size={dieSize}
+              />
             </LinearGradient>
           )}
 
           {isOpeningRoll && openingDice.player === null && !openingRolling && (
-            <TouchableOpacity style={styles.rollButton} onPress={rollOpeningDice}>
-              <Ionicons name="dice" size={24} color={THEME.colors.textDark} />
-              <Text style={styles.rollButtonLabel}>ZAR AT</Text>
+            <TouchableOpacity style={[styles.rollButton, { minWidth: clamp(winH * 0.17, 60, 96), paddingVertical: s(9) }]} onPress={rollOpeningDice}>
+              <Ionicons name="dice" size={iconSize} color={THEME.colors.textDark} />
+              <Text style={[styles.rollButtonLabel, { fontSize: btnFont }]}>ZAR AT</Text>
             </TouchableOpacity>
           )}
 
           {isPlayerTurn && gamePhase === 'rolling' && (
-            <TouchableOpacity style={styles.rollButton} onPress={rollDice}>
-              <Ionicons name="dice" size={24} color={THEME.colors.textDark} />
-              <Text style={styles.rollButtonLabel}>ZAR AT</Text>
+            <TouchableOpacity style={[styles.rollButton, { minWidth: clamp(winH * 0.17, 60, 96), paddingVertical: s(9) }]} onPress={rollDice}>
+              <Ionicons name="dice" size={iconSize} color={THEME.colors.textDark} />
+              <Text style={[styles.rollButtonLabel, { fontSize: btnFont }]}>ZAR AT</Text>
             </TouchableOpacity>
           )}
 
           {isPlayerTurn && gamePhase === 'moving' && moveHistory.length > 0 && (
-            <TouchableOpacity style={styles.actionButton} onPress={undoMove}>
-              <Ionicons name="arrow-undo" size={22} color="#FFF" />
-              <Text style={styles.actionButtonLabel}>Geri Al</Text>
+            <TouchableOpacity style={[styles.actionButton, { minWidth: clamp(winH * 0.155, 54, 88), paddingVertical: s(7) }]} onPress={undoMove}>
+              <Ionicons name="arrow-undo" size={iconSize * 0.85} color="#FFF" />
+              <Text style={[styles.actionButtonLabel, { fontSize: btnFont * 0.85 }]}>Geri Al</Text>
             </TouchableOpacity>
           )}
 
           {isPlayerTurn && gamePhase === 'moving' && turnFinished && (
-            <TouchableOpacity style={[styles.actionButton, styles.endTurnButton]} onPress={endTurn}>
-              <Ionicons name="play-forward" size={22} color={THEME.colors.textDark} />
-              <Text style={[styles.actionButtonLabel, styles.endTurnLabel]}>Turu Bitir</Text>
+            <TouchableOpacity style={[styles.actionButton, styles.endTurnButton, { minWidth: clamp(winH * 0.155, 54, 88), paddingVertical: s(7) }]} onPress={endTurn}>
+              <Ionicons name="play-forward" size={iconSize * 0.85} color={THEME.colors.textDark} />
+              <Text style={[styles.actionButtonLabel, styles.endTurnLabel, { fontSize: btnFont * 0.85 }]}>Turu Bitir</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -213,19 +238,19 @@ const GameScreen = () => {
         />
         
         <TouchableOpacity style={styles.menuButton} onPress={pauseGame}>
-          <Ionicons name="menu" size={28} color={THEME.colors.textPrimary} />
+          <Ionicons name="menu" size={clamp(winH * 0.065, 22, 34)} color={THEME.colors.textPrimary} />
         </TouchableOpacity>
       </View>
 
       {/* Bakiye ve masa bahsi */}
       <View style={styles.walletBar} pointerEvents="none">
         <View style={styles.walletChip}>
-          <Ionicons name="cash" size={13} color={THEME.colors.gold} />
-          <Text style={styles.walletText}>{formatCoins(balance)}</Text>
+          <Ionicons name="cash" size={labelFont * 1.15} color={THEME.colors.gold} />
+          <Text style={[styles.walletText, { fontSize: labelFont }]}>{formatCoins(balance)}</Text>
         </View>
         <View style={styles.walletChip}>
-          <Text style={styles.stakeLabel}>{table.name}</Text>
-          <Text style={styles.walletText}>{formatCoins(stake)}</Text>
+          <Text style={[styles.stakeLabel, { fontSize: labelFont * 0.85 }]}>{table.name}</Text>
+          <Text style={[styles.walletText, { fontSize: labelFont }]}>{formatCoins(stake)}</Text>
         </View>
       </View>
 
@@ -357,8 +382,6 @@ const styles = StyleSheet.create({
   diceTray: {
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 8,
-    borderRadius: 14,
     borderWidth: 1.5,
     borderColor: THEME.colors.gold,
     shadowColor: '#000',
@@ -369,7 +392,6 @@ const styles = StyleSheet.create({
   },
   openingLabel: {
     color: THEME.colors.gold,
-    fontSize: 9,
     fontWeight: 'bold',
     letterSpacing: 1,
     marginBottom: 4,
@@ -385,8 +407,6 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     backgroundColor: 'rgba(0,0,0,0.65)',
-    minWidth: 66,
-    paddingVertical: 8,
     paddingHorizontal: 6,
     borderRadius: 14,
     borderWidth: 1,
@@ -401,7 +421,6 @@ const styles = StyleSheet.create({
   },
   actionButtonLabel: {
     color: '#FFF',
-    fontSize: 10,
     fontWeight: 'bold',
     marginTop: 3,
   },
@@ -414,8 +433,6 @@ const styles = StyleSheet.create({
   },
   rollButton: {
     backgroundColor: THEME.colors.gold,
-    minWidth: 72,
-    paddingVertical: 10,
     paddingHorizontal: 8,
     borderRadius: 14,
     borderWidth: 2,
@@ -430,7 +447,6 @@ const styles = StyleSheet.create({
   },
   rollButtonLabel: {
     color: THEME.colors.textDark,
-    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1,
     marginTop: 3,
@@ -456,19 +472,18 @@ const styles = StyleSheet.create({
   },
   turnBadge: {
     position: 'absolute',
-    top: -7,
+    top: -9,
     backgroundColor: THEME.colors.gold,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 1.5,
+    borderRadius: 7,
     borderWidth: 1,
     borderColor: '#FFF',
   },
   turnBadgeText: {
     color: THEME.colors.textDark,
-    fontSize: 8,
     fontWeight: '900',
-    letterSpacing: 0.8,
+    letterSpacing: 1,
   },
   identityRow: {
     flexDirection: 'row',
@@ -511,7 +526,6 @@ const styles = StyleSheet.create({
   messageText: {
     color: THEME.colors.goldLight,
     fontWeight: 'bold',
-    fontSize: 11,
     textAlign: 'center',
     marginTop: 8,
   },
@@ -616,12 +630,10 @@ const styles = StyleSheet.create({
   },
   walletText: {
     color: THEME.colors.goldLight,
-    fontSize: 12,
     fontWeight: 'bold',
   },
   stakeLabel: {
     color: THEME.colors.textSecondary,
-    fontSize: 10,
   },
   payoutBox: {
     flexDirection: 'row',

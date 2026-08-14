@@ -90,6 +90,7 @@ const useGameStore = create((set, get) => {
     turnInitialState: null,
     openingDice: { player: null, ai: null },
     openingRolling: false,
+    diceRolling: false,   // zar donme animasyonu
     autoSkipCount: 0,
     hasSavedGame: false,
     stats: { ...EMPTY_STATS },
@@ -159,6 +160,7 @@ const useGameStore = create((set, get) => {
         isPaused: false,
         openingDice: { player: null, ai: null },
         openingRolling: false,
+        diceRolling: false,
         gamePhase: saved.gamePhase,
       });
 
@@ -220,6 +222,7 @@ const useGameStore = create((set, get) => {
         turnInitialState: null,
         openingDice: { player: null, ai: null },
         openingRolling: false,
+        diceRolling: false,
         autoSkipCount: 0,
         hasSavedGame: false,
       });
@@ -294,7 +297,9 @@ const useGameStore = create((set, get) => {
       const remainingMoves = getMovesFromDice(dice[0], dice[1]);
       const { board, bar, borneOff } = get();
       haptics.roll(); sfx.dice();
-      set({ autoSkipCount: 0 });   // oyuncu tekrar zar atabildi: sayaç sıfırlanır
+      // autoSkipCount sıfırlanır: oyuncu tekrar zar atabildi
+      set({ autoSkipCount: 0, diceRolling: true });
+      schedule(() => set({ diceRolling: false }), 850);
 
       const validMoves = getValidFirstMoves(board, bar, borneOff, currentPlayer, remainingMoves);
 
@@ -444,7 +449,7 @@ const useGameStore = create((set, get) => {
         currentPlayer: nextPlayer, dice: null, remainingMoves: [],
         moveHistory: [], selectedPoint: null, validDestinations: [],
         message: '', lastMove: null, showDoublesIndicator: false,
-        turnFinished: false, turnInitialState: null,
+        turnFinished: false, turnInitialState: null, diceRolling: false,
       });
 
       if (nextPlayer === playerColor) {
@@ -470,7 +475,9 @@ const useGameStore = create((set, get) => {
 
       const dice = rollDiceUtil();
       const remainingMoves = getMovesFromDice(dice[0], dice[1]);
-      set({ dice, remainingMoves, showDoublesIndicator: dice[0] === dice[1] });
+      haptics.roll(); sfx.dice();
+      set({ dice, remainingMoves, showDoublesIndicator: dice[0] === dice[1], diceRolling: true });
+      schedule(() => set({ diceRolling: false }), 850);
 
       schedule(() => {
         let moves;
@@ -594,7 +601,7 @@ const useGameStore = create((set, get) => {
         winner: null, winType: null, winPoints: 0,
         message: '', moveHistory: [], lastMove: null, moveSeq: 0,
         showDoublesIndicator: false, turnFinished: false, turnInitialState: null,
-        openingDice: { player: null, ai: null }, openingRolling: false,
+        openingDice: { player: null, ai: null }, openingRolling: false, diceRolling: false,
         hasSavedGame: keepSave,
         stake: keepSave ? get().stake : 0,
       });

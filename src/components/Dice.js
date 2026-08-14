@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, Animated, Easing } from 'react-native';
 import THEME from '../constants/theme';
 
-const Die = ({ value, isUsed, rolling }) => {
+const Die = ({ value, isUsed, rolling, size = THEME.sizes.diceSize }) => {
   const rotation = React.useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -26,6 +26,7 @@ const Die = ({ value, isUsed, rolling }) => {
     transform: [{ rotate: spin }],
     opacity: isUsed ? 0.3 : 1,
   };
+  const dotSize = Math.max(size * 0.19, 4);
 
   if (!value) return null;
 
@@ -42,16 +43,19 @@ const Die = ({ value, isUsed, rolling }) => {
   const currentPositions = dotPositions[value] || [];
 
   return (
-    <Animated.View style={[styles.die, animatedStyle]}>
+    <Animated.View style={[styles.die, { width: size, height: size, borderRadius: size * 0.2 }, animatedStyle]}>
       {currentPositions.map((pos, i) => (
         <View
           key={i}
           style={[
             styles.dot,
             {
+              width: dotSize,
+              height: dotSize,
+              borderRadius: dotSize / 2,
               left: `${pos[0] * 100}%`,
               top: `${pos[1] * 100}%`,
-              transform: [{ translateX: -4 }, { translateY: -4 }],
+              transform: [{ translateX: -dotSize / 2 }, { translateY: -dotSize / 2 }],
             },
           ]}
         />
@@ -60,7 +64,7 @@ const Die = ({ value, isUsed, rolling }) => {
   );
 };
 
-const Dice = ({ dice, rolling, remainingMoves, onRoll }) => {
+const Dice = ({ dice, rolling, remainingMoves, onRoll, size }) => {
   if (!dice && onRoll) {
     return (
       <TouchableOpacity style={styles.rollButton} onPress={onRoll}>
@@ -85,8 +89,8 @@ const Dice = ({ dice, rolling, remainingMoves, onRoll }) => {
 
   return (
     <View style={styles.container}>
-      <Die value={dice[0]} isUsed={isUsed1} rolling={rolling} />
-      <Die value={dice[1]} isUsed={isUsed2} rolling={rolling} />
+      <Die value={dice[0]} isUsed={isUsed1} rolling={rolling} size={size} />
+      <Die value={dice[1]} isUsed={isUsed2} rolling={rolling} size={size} />
     </View>
   );
 };
@@ -94,16 +98,13 @@ const Dice = ({ dice, rolling, remainingMoves, onRoll }) => {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    gap: 15,
+    gap: 10,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 10,
   },
   die: {
-    width: THEME.sizes.diceSize,
-    height: THEME.sizes.diceSize,
     backgroundColor: THEME.colors.diceWhite,
-    borderRadius: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -113,10 +114,7 @@ const styles = StyleSheet.create({
   },
   dot: {
     position: 'absolute',
-    width: 8,
-    height: 8,
     backgroundColor: THEME.colors.diceDots,
-    borderRadius: 4,
   },
   rollButton: {
     backgroundColor: THEME.colors.buttonPrimary,
