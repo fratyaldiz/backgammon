@@ -99,7 +99,9 @@ const MenuScreen = () => {
                     <Ionicons name="cash-outline" size={12} color={ok ? THEME.colors.goldLight : '#6b5636'} />
                     <Text style={[styles.betText, !ok && styles.dimText]}>{formatCoins(t.bet)}</Text>
                   </View>
-                  <Text style={[styles.tableDesc, !ok && styles.dimText]}>{t.desc}</Text>
+                  {t.desc ? (
+                    <Text style={[styles.tableDesc, !ok && styles.dimText]}>{t.desc}</Text>
+                  ) : null}
                   <Text style={styles.marsHint}>Mars ×2</Text>
                 </TouchableOpacity>
               );

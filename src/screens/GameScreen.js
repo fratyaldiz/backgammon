@@ -12,7 +12,12 @@ import { getTable, formatCoins } from '../utils/economy';
 import { makeScale, clamp } from '../utils/layout';
 import { Ionicons } from '@expo/vector-icons';
 
-const PlayerInfo = ({ name, color, isActive, pips, borneOff }) => {
+/**
+ * Kompakt oyuncu kartı. Yatay ekranda dikey alan kıymetli olduğu için
+ * avatar ve ad tek satırda; kart geniş ve alçak tutulur, kalan alan
+ * tahtaya bırakılır.
+ */
+const PlayerInfo = ({ name, color, isActive, pips, borneOff, avatarSize, font }) => {
   const isWhite = color === WHITE;
   return (
     <LinearGradient
@@ -26,21 +31,29 @@ const PlayerInfo = ({ name, color, isActive, pips, borneOff }) => {
           <Text style={styles.turnBadgeText}>SIRA</Text>
         </View>
       )}
-      <View style={[
-        styles.avatar,
-        { backgroundColor: isWhite ? '#F0E6D2' : '#1A1A2E', borderColor: isActive ? THEME.colors.gold : '#555' },
-      ]}>
-        <Ionicons name="person" size={20} color={isWhite ? '#1A1A2E' : '#F0E6D2'} />
+
+      <View style={styles.identityRow}>
+        <View style={[
+          styles.avatar,
+          {
+            width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2,
+            backgroundColor: isWhite ? '#F0E6D2' : '#1A1A2E',
+            borderColor: isActive ? THEME.colors.gold : '#555',
+          },
+        ]}>
+          <Ionicons name="person" size={avatarSize * 0.55} color={isWhite ? '#1A1A2E' : '#F0E6D2'} />
+        </View>
+        <Text style={[styles.playerName, { fontSize: font.name }]} numberOfLines={1}>{name}</Text>
       </View>
-      <Text style={styles.playerName}>{name}</Text>
+
       <View style={styles.statsContainer}>
         <View style={styles.statRow}>
-          <Text style={styles.statLabel}>Pip</Text>
-          <Text style={styles.statValue}>{pips}</Text>
+          <Text style={[styles.statLabel, { fontSize: font.label }]}>Pip</Text>
+          <Text style={[styles.statValue, { fontSize: font.value }]}>{pips}</Text>
         </View>
         <View style={styles.statRow}>
-          <Text style={styles.statLabel}>Toplanan</Text>
-          <Text style={styles.statValue}>{borneOff}/15</Text>
+          <Text style={[styles.statLabel, { fontSize: font.label }]}>Toplanan</Text>
+          <Text style={[styles.statValue, { fontSize: font.value }]}>{borneOff}/15</Text>
         </View>
       </View>
     </LinearGradient>
@@ -67,8 +80,15 @@ const GameScreen = () => {
   const insets = useSafeAreaInsets();
   const { s } = makeScale(winW, winH);
   const usableW = winW - insets.left - insets.right;
-  // Kenar çubukları genişliğin oranı; çok dar/çok geniş olmaması için sınırlı
-  const sidebarW = clamp(usableW * 0.14, 76, 150);
+  // Kenar çubukları dar tutulur: kalan genişlik tahtaya gider. Alt sınır
+  // "Toplanan 15/15" satırının sığacağı en küçük genişliktir.
+  const sidebarW = clamp(usableW * 0.105, 78, 118);
+  const avatarSize = clamp(sidebarW * 0.30, 20, 32);
+  const font = {
+    name: clamp(sidebarW * 0.105, 8, 12),
+    label: clamp(sidebarW * 0.085, 7, 10),
+    value: clamp(sidebarW * 0.10, 8, 12),
+  };
 
   const opponentColor = playerColor === WHITE ? BLACK : WHITE;
 
@@ -82,7 +102,7 @@ const GameScreen = () => {
   const isPlayerTurn = currentPlayer === playerColor;
 
   return (
-    <View style={[styles.container, { paddingLeft: insets.left + s(8), paddingRight: insets.right + s(8), paddingTop: insets.top + s(4), paddingBottom: insets.bottom + s(4) }]}>
+    <View style={[styles.container, { paddingLeft: insets.left + s(5), paddingRight: insets.right + s(5), paddingTop: insets.top + s(4), paddingBottom: insets.bottom + s(4) }]}>
       {/* Sol Kenar - Oyuncu Bilgileri */}
       <View style={[styles.sidebar, { width: sidebarW }]}>
         <PlayerInfo 
@@ -91,6 +111,8 @@ const GameScreen = () => {
           isActive={isPlayerTurn}
           pips={playerPips}
           borneOff={playerBorneOff}
+          avatarSize={avatarSize}
+          font={font}
         />
         {message ? <Text style={styles.messageText}>{message}</Text> : null}
       </View>
@@ -186,6 +208,8 @@ const GameScreen = () => {
           isActive={!isPlayerTurn}
           pips={opponentPips}
           borneOff={opponentBorneOff}
+          avatarSize={avatarSize}
+          font={font}
         />
         
         <TouchableOpacity style={styles.menuButton} onPress={pauseGame}>
@@ -412,14 +436,14 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   playerInfo: {
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    borderWidth: 2,
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    borderWidth: 1.5,
     borderColor: '#3a2a18',
     width: '100%',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 10,
     position: 'relative',
   },
   activePlayer: {
@@ -432,57 +456,56 @@ const styles = StyleSheet.create({
   },
   turnBadge: {
     position: 'absolute',
-    top: -9,
+    top: -7,
     backgroundColor: THEME.colors.gold,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#FFF',
   },
   turnBadgeText: {
     color: THEME.colors.textDark,
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '900',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
+  },
+  identityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 5,
+    marginTop: 2,
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 2,
+    borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 6,
   },
   playerName: {
     color: THEME.colors.textPrimary,
     fontWeight: 'bold',
-    fontSize: 12,
-    marginBottom: 8,
-    textAlign: 'center',
+    flexShrink: 1,
   },
   statsContainer: {
     width: '100%',
-    gap: 4,
+    gap: 3,
   },
   statRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    borderRadius: 5,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
   },
   statLabel: {
     color: THEME.colors.textSecondary,
-    fontSize: 9,
     fontWeight: '600',
   },
   statValue: {
     color: THEME.colors.goldLight,
-    fontSize: 11,
     fontWeight: 'bold',
   },
   messageText: {

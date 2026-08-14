@@ -16,8 +16,8 @@ export const BONUS_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 export const TABLES = [
   { id: 'easy', name: 'Acemi Masası', bet: 50, difficulty: 'easy', desc: 'Rastgele hamleler' },
-  { id: 'medium', name: 'Usta Masası', bet: 200, difficulty: 'medium', desc: 'Temel strateji' },
-  { id: 'hard', name: 'Şampiyon Masası', bet: 500, difficulty: 'hard', desc: 'Konum analizi + ileri hamle' },
+  { id: 'medium', name: 'Usta Masası', bet: 200, difficulty: 'medium', desc: '' },
+  { id: 'hard', name: 'Şampiyon Masası', bet: 500, difficulty: 'hard', desc: '' },
 ];
 
 export function getTable(id) {

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -17,6 +17,22 @@ export default function App() {
       await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     }
     lockOrientation();
+
+    // Android'de gezinme çubuğu yatay modda ekrandan yer çalıyor; tam ekran
+    // (immersive) moduna alınır, kenardan kaydırınca geçici olarak görünür.
+    // Desteklenmeyen sürümlerde sessizce atlanır.
+    if (Platform.OS === 'android') {
+      (async () => {
+        try {
+          const NavigationBar = await import('expo-navigation-bar');
+          await NavigationBar.setVisibilityAsync('hidden');
+          await NavigationBar.setBehaviorAsync('overlay-swipe');
+        } catch (e) {
+          // gezinme çubuğu gizlenemezse oyun normal çalışmaya devam eder
+        }
+      })();
+    }
+
     // Kayıtlı oyun, ayarlar ve istatistikleri yükle
     initApp();
   }, [initApp]);

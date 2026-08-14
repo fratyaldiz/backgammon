@@ -75,6 +75,11 @@ const Point = ({ index, isUp, checkers, owner, isSelected, isDestination, pointW
  * çizim ile dokunma testi birbirini tutmuyor, cihaza göre kayma
  * oluşuyordu. Ölçüm tabanlı hesap her cihazda birebir tutar.
  */
+// Bir çeyreğe beş taş sığmalı: üst üste %22 bindirmeyle yığın yüksekliği
+// taş × (1 + 4 × 0.78) = taş × 4.12 eder ve çeyrek yüksekliğinin (%47)
+// altında kalmalıdır → taş ≤ yükseklik × 0.47 / 4.12 ≈ 0.114.
+const MAX_CHECKER_H_RATIO = 0.112;
+
 export function computeBoardMetrics(contentW, contentH) {
   const bearOffGap = 4;
   const bearOffW = clamp(contentW * 0.062, 26, 72);
@@ -82,12 +87,12 @@ export function computeBoardMetrics(contentW, contentH) {
 
   // Taş boyutu ile bar genişliği birbirine bağlı: bir ön hesapla çöz
   const estPointW = (mainW - 46) / 12;
-  const estChecker = Math.min(estPointW * 0.86, contentH * 0.115);
+  const estChecker = Math.min(estPointW * 0.86, contentH * MAX_CHECKER_H_RATIO);
   const barW = clamp(Math.max(estChecker + 12, mainW * 0.045), 32, 84);
 
   // Kesirli genişlik: 12 üçgen + bar tam olarak mainW'yi doldurur, artık kalmaz
   const pointW = (mainW - barW) / 12;
-  const checkerSize = Math.max(Math.min(pointW * 0.86, contentH * 0.115), 12);
+  const checkerSize = Math.max(Math.min(pointW * 0.86, contentH * MAX_CHECKER_H_RATIO), 12);
   const triangleH = contentH * 0.44;
 
   return { bearOffW, bearOffGap, mainW, barW, pointW, checkerSize, triangleH, contentW, contentH };
