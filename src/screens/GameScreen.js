@@ -7,6 +7,7 @@ import Dice, { Die } from '../components/Dice';
 import THEME from '../constants/theme';
 import { WHITE, BLACK } from '../utils/diceUtils';
 import { getPipCount } from '../utils/gameLogic';
+import { getTable, formatCoins } from '../utils/economy';
 import { Ionicons } from '@expo/vector-icons';
 
 const PlayerInfo = ({ name, color, isActive, pips, borneOff }) => {
@@ -51,10 +52,12 @@ const GameScreen = () => {
     turnFinished, moveHistory, undoMove, endTurn,
     pauseGame, resumeGame, isPaused,
     openingDice, openingRolling, rollOpeningDice,
-    winType, winPoints, stats, settings, toggleHaptics
+    winType, winPoints, stats, settings, toggleHaptics, toggleSound,
+    balance, stake, lastPayout, tableId
   } = useGameStore();
 
   const isOpeningRoll = gamePhase === 'opening_roll';
+  const table = getTable(tableId);
 
   const opponentColor = playerColor === WHITE ? BLACK : WHITE;
 
@@ -179,6 +182,18 @@ const GameScreen = () => {
         </TouchableOpacity>
       </View>
 
+      {/* Bakiye ve masa bahsi */}
+      <View style={styles.walletBar} pointerEvents="none">
+        <View style={styles.walletChip}>
+          <Ionicons name="cash" size={13} color={THEME.colors.gold} />
+          <Text style={styles.walletText}>{formatCoins(balance)}</Text>
+        </View>
+        <View style={styles.walletChip}>
+          <Text style={styles.stakeLabel}>{table.name}</Text>
+          <Text style={styles.walletText}>{formatCoins(stake)}</Text>
+        </View>
+      </View>
+
       {/* Oyun Bitti Overlay */}
       {gamePhase === 'game_over' && (
         <View style={styles.overlay}>
@@ -198,6 +213,19 @@ const GameScreen = () => {
                     : 'Hiç taş toplayamadınız.')
                 : `${winPoints} puan`}
             </Text>
+
+            <View style={[styles.payoutBox, lastPayout >= 0 ? styles.payoutWin : styles.payoutLose]}>
+              <Ionicons
+                name={lastPayout >= 0 ? 'trending-up' : 'trending-down'}
+                size={18}
+                color={lastPayout >= 0 ? THEME.colors.success : THEME.colors.danger}
+              />
+              <Text style={[styles.payoutText, { color: lastPayout >= 0 ? THEME.colors.success : THEME.colors.danger }]}>
+                {lastPayout >= 0 ? '+' : '−'}{formatCoins(Math.abs(lastPayout))}
+              </Text>
+              <Text style={styles.payoutBalance}>Bakiye {formatCoins(balance)}</Text>
+            </View>
+
             <View style={styles.statsRow}>
               <Text style={styles.statsChip}>Oynanan {stats.played}</Text>
               <Text style={styles.statsChip}>Galibiyet {stats.won}</Text>
@@ -222,14 +250,25 @@ const GameScreen = () => {
               <Text style={styles.overlayBtnText}>Devam Et</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingRow} onPress={toggleHaptics}>
-              <Ionicons
-                name={settings.haptics ? 'checkbox' : 'square-outline'}
-                size={20}
-                color={THEME.colors.goldLight}
-              />
-              <Text style={styles.settingText}>Titreşim</Text>
-            </TouchableOpacity>
+            <View style={styles.settingsGroup}>
+              <TouchableOpacity style={styles.settingRow} onPress={toggleSound}>
+                <Ionicons
+                  name={settings.sound ? 'volume-high' : 'volume-mute'}
+                  size={20}
+                  color={settings.sound ? THEME.colors.goldLight : THEME.colors.textSecondary}
+                />
+                <Text style={styles.settingText}>Ses</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.settingRow} onPress={toggleHaptics}>
+                <Ionicons
+                  name={settings.haptics ? 'phone-portrait' : 'phone-portrait-outline'}
+                  size={20}
+                  color={settings.haptics ? THEME.colors.goldLight : THEME.colors.textSecondary}
+                />
+                <Text style={styles.settingText}>Titreşim</Text>
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.statsRow}>
               <Text style={styles.statsChip}>G {stats.won}</Text>
@@ -507,16 +546,74 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
   },
+  settingsGroup: {
+    flexDirection: 'row',
+    gap: 22,
+    marginBottom: 14,
+  },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 14,
+    gap: 6,
     paddingVertical: 4,
   },
   settingText: {
     color: THEME.colors.textPrimary,
-    fontSize: 14,
+    fontSize: 13,
+  },
+  walletBar: {
+    position: 'absolute',
+    top: 6,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    zIndex: 40,
+  },
+  walletChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.45)',
+  },
+  walletText: {
+    color: THEME.colors.goldLight,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  stakeLabel: {
+    color: THEME.colors.textSecondary,
+    fontSize: 10,
+  },
+  payoutBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  payoutWin: {
+    backgroundColor: 'rgba(46,204,113,0.12)',
+    borderColor: 'rgba(46,204,113,0.5)',
+  },
+  payoutLose: {
+    backgroundColor: 'rgba(231,76,60,0.12)',
+    borderColor: 'rgba(231,76,60,0.5)',
+  },
+  payoutText: {
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  payoutBalance: {
+    color: THEME.colors.textSecondary,
+    fontSize: 11,
   },
   overlayBtn: {
     backgroundColor: THEME.colors.buttonPrimary,

@@ -1,8 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { STARTING_BALANCE } from './economy';
 
 const SAVE_KEY = 'tavla.savedGame.v1';
 const STATS_KEY = 'tavla.stats.v1';
 const SETTINGS_KEY = 'tavla.settings.v1';
+const WALLET_KEY = 'tavla.wallet.v1';
 
 // Kayıt biçimi değişirse eski kayıtlar sessizce atılır.
 const SAVE_VERSION = 1;
@@ -28,6 +30,8 @@ export function serializeGame(s) {
     turnInitialState: s.turnInitialState,
     moveHistory: s.moveHistory,
     autoSkipCount: s.autoSkipCount,
+    tableId: s.tableId,
+    stake: s.stake,
   };
 }
 
@@ -99,8 +103,36 @@ export async function resetStats() {
   return { ...EMPTY_STATS };
 }
 
+// ─── Cüzdan ──────────────────────────────────────
+// İlk açılışta başlangıç bakiyesi verilir ve ödül sayacı o anda başlatılır.
+export async function loadWallet() {
+  try {
+    const raw = await AsyncStorage.getItem(WALLET_KEY);
+    if (!raw) {
+      const fresh = { balance: STARTING_BALANCE, lastBonusAt: Date.now() };
+      await AsyncStorage.setItem(WALLET_KEY, JSON.stringify(fresh));
+      return fresh;
+    }
+    const d = JSON.parse(raw);
+    return {
+      balance: Number.isFinite(d.balance) ? Math.max(0, Math.round(d.balance)) : STARTING_BALANCE,
+      lastBonusAt: Number.isFinite(d.lastBonusAt) ? d.lastBonusAt : Date.now(),
+    };
+  } catch (e) {
+    return { balance: STARTING_BALANCE, lastBonusAt: Date.now() };
+  }
+}
+
+export async function saveWallet(wallet) {
+  try {
+    await AsyncStorage.setItem(WALLET_KEY, JSON.stringify(wallet));
+  } catch (e) {
+    // yoksay
+  }
+}
+
 // ─── Ayarlar ─────────────────────────────────────
-const DEFAULT_SETTINGS = { haptics: true };
+const DEFAULT_SETTINGS = { haptics: true, sound: true };
 
 export async function loadSettings() {
   try {

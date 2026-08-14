@@ -9,9 +9,15 @@ import { getAIMoves } from '../utils/aiPlayer';
 import {
   saveGame, loadGame, clearSavedGame,
   loadStats, saveStats, resetStats,
-  loadSettings, saveSettings
+  loadSettings, saveSettings,
+  loadWallet, saveWallet
 } from '../utils/storage';
 import { haptics, setHapticsEnabled } from '../utils/feedback';
+import { initSound, sfx, setSoundEnabled } from '../utils/sound';
+import {
+  getTable, canPlay, settlement, forfeitAmount,
+  bonusStatus, BONUS_AMOUNT, STARTING_BALANCE
+} from '../utils/economy';
 
 const EMPTY_STATS = { played: 0, won: 0, lost: 0, marsWon: 0, marsLost: 0 };
 
@@ -87,15 +93,41 @@ const useGameStore = create((set, get) => {
     autoSkipCount: 0,
     hasSavedGame: false,
     stats: { ...EMPTY_STATS },
-    settings: { haptics: true },
+    settings: { haptics: true, sound: true },
+    balance: STARTING_BALANCE,
+    lastBonusAt: null,
+    tableId: 'medium',
+    stake: 0,          // sürmekte olan oyunun bahsi
+    lastPayout: 0,     // oyun sonu ekranında gösterilen kazanç/kayıp
 
     // ─── UYGULAMA AÇILIŞI ────────────────────────
     initApp: async () => {
-      const [settings, stats, saved] = await Promise.all([
-        loadSettings(), loadStats(), loadGame(),
+      const [settings, stats, saved, wallet] = await Promise.all([
+        loadSettings(), loadStats(), loadGame(), loadWallet(),
       ]);
       setHapticsEnabled(settings.haptics);
-      set({ settings, stats, hasSavedGame: !!saved });
+      setSoundEnabled(settings.sound);
+      initSound();
+      set({
+        settings, stats,
+        hasSavedGame: !!saved,
+        balance: wallet.balance,
+        lastBonusAt: wallet.lastBonusAt,
+        tableId: (saved && saved.tableId) || 'medium',
+      });
+    },
+
+    // ─── 6 SAATLİK ÖDÜL ──────────────────────────
+    claimBonus: () => {
+      const { lastBonusAt, balance } = get();
+      if (!bonusStatus(lastBonusAt).ready) return;
+
+      const now = Date.now();
+      const newBalance = balance + BONUS_AMOUNT;
+      sfx.coin();
+      haptics.bearOff();
+      saveWallet({ balance: newBalance, lastBonusAt: now });
+      set({ balance: newBalance, lastBonusAt: now });
     },
 
     // ─── KAYITLI OYUNA DEVAM ─────────────────────
@@ -116,6 +148,9 @@ const useGameStore = create((set, get) => {
         turnInitialState: saved.turnInitialState || null,
         moveHistory: saved.moveHistory || [],
         autoSkipCount: saved.autoSkipCount || 0,
+        tableId: saved.tableId || 'medium',
+        stake: saved.stake || getTable(saved.tableId || 'medium').bet,
+        lastPayout: 0,
         selectedPoint: null,
         validDestinations: [],
         winner: null, winType: null, winPoints: 0,
@@ -137,9 +172,32 @@ const useGameStore = create((set, get) => {
     },
 
     // ─── OYUN BAŞLAT ─────────────────────────────
-    startGame: (difficulty) => {
+    // tableId verilmezse mevcut masa kullanılır. Bakiye masanın gerektirdiği
+    // düzeyin altındaysa oyun başlamaz.
+    startGame: (difficulty, tableId) => {
+      const state = get();
+      const table = getTable(tableId || state.tableId || difficulty || 'medium');
+
+      // Sürmekte olan oyun terk ediliyorsa bahis kaybedilmiş sayılır
+      let balance = state.balance;
+      const inProgress = state.gamePhase !== 'menu' && state.gamePhase !== 'game_over' && state.stake > 0;
+      if (inProgress) {
+        balance = Math.max(0, balance + forfeitAmount(state.stake));
+      }
+
+      if (!canPlay(balance, table)) {
+        set({ balance, message: 'Bu masa için bakiyeniz yetersiz.' });
+        saveWallet({ balance, lastBonusAt: state.lastBonusAt });
+        return false;
+      }
+
+      saveWallet({ balance, lastBonusAt: state.lastBonusAt });
       clearSavedGame();
       set({
+        balance,
+        tableId: table.id,
+        stake: table.bet,
+        lastPayout: 0,
         board: createInitialBoard(),
         bar: { white: 0, black: 0 },
         borneOff: { white: 0, black: 0 },
@@ -151,7 +209,7 @@ const useGameStore = create((set, get) => {
         validDestinations: [],
         gamePhase: 'opening_roll',   // Başlangıç: her iki taraf birer zar atar
         isPaused: false,
-        difficulty: difficulty || 'medium',
+        difficulty: table.difficulty,
         winner: null, winType: null, winPoints: 0,
         message: 'Başlangıç zarı: yüksek atan başlar.',
         moveHistory: [],
@@ -165,6 +223,7 @@ const useGameStore = create((set, get) => {
         autoSkipCount: 0,
         hasSavedGame: false,
       });
+      return true;
     },
 
     // ─── AÇILIŞ ZARI (kim başlayacak?) ───────────
@@ -176,7 +235,7 @@ const useGameStore = create((set, get) => {
 
       const playerDie = rollDie();
       const aiDie = rollDie();
-      haptics.roll();
+      haptics.roll(); sfx.dice();
       set({ openingDice: { player: playerDie, ai: aiDie }, openingRolling: true, message: '' });
 
       schedule(() => {
@@ -234,7 +293,7 @@ const useGameStore = create((set, get) => {
       const dice = rollDiceUtil();
       const remainingMoves = getMovesFromDice(dice[0], dice[1]);
       const { board, bar, borneOff } = get();
-      haptics.roll();
+      haptics.roll(); sfx.dice();
       set({ autoSkipCount: 0 });   // oyuncu tekrar zar atabildi: sayaç sıfırlanır
 
       const validMoves = getValidFirstMoves(board, bar, borneOff, currentPlayer, remainingMoves);
@@ -314,9 +373,9 @@ const useGameStore = create((set, get) => {
 
       const newMoveHistory = [...moveHistory, move];
 
-      if (newState.hit) haptics.hit();
-      else if (move.to === 'off') haptics.bearOff();
-      else haptics.move();
+      if (newState.hit) { haptics.hit(); sfx.hit(); }
+      else if (move.to === 'off') { haptics.bearOff(); sfx.bearOff(); }
+      else { haptics.move(); sfx.move(); }
 
       // Oyun bitti mi?
       const gameOverResult = isGameOver(newState.borneOff);
@@ -366,7 +425,7 @@ const useGameStore = create((set, get) => {
         if (idx !== -1) newRemainingMoves.splice(idx, 1);
       }
 
-      haptics.tap();
+      haptics.tap(); sfx.tap();
       set({
         board: currentState.board, bar: currentState.bar, borneOff: currentState.borneOff,
         remainingMoves: newRemainingMoves, moveHistory: newMoveHistory,
@@ -435,7 +494,7 @@ const useGameStore = create((set, get) => {
             try { newState = applyMove(s.board, s.bar, s.borneOff, move, s.currentPlayer); }
             catch (e) { i++; schedule(applyNext, 300); return; }
 
-            if (newState.hit) haptics.hit();
+            if (newState.hit) { haptics.hit(); sfx.hit(); } else sfx.move();
 
             set({
               board: newState.board, bar: newState.bar, borneOff: newState.borneOff,
@@ -457,7 +516,7 @@ const useGameStore = create((set, get) => {
 
     // ─── OYUN SONU ───────────────────────────────
     finishGame: (winner, borneOff) => {
-      const { playerColor, stats } = get();
+      const { playerColor, stats, stake, balance, lastBonusAt } = get();
       const win = getWinType(borneOff, winner);
       const playerWon = winner === playerColor;
 
@@ -469,10 +528,18 @@ const useGameStore = create((set, get) => {
         marsLost: stats.marsLost + (!playerWon && win.type === 'mars' ? 1 : 0),
       };
 
-      if (playerWon) haptics.win(); else haptics.lose();
+      // Bahis hesaplaşması: mars iki kat. Masaya giriş bahsin iki katı bakiye
+      // istediği için sonuç hiçbir zaman eksiye düşmez.
+      const payout = settlement(stake, win.points, playerWon);
+      const newBalance = Math.max(0, balance + payout);
+
+      if (playerWon) { haptics.win(); sfx.win(); }
+      else { haptics.lose(); sfx.lose(); }
+      if (payout > 0) schedule(() => sfx.coin(), 700);
 
       clearSavedGame();
       saveStats(newStats);
+      saveWallet({ balance: newBalance, lastBonusAt });
       set({
         gamePhase: 'game_over',
         winner,
@@ -480,6 +547,8 @@ const useGameStore = create((set, get) => {
         winPoints: win.points,
         message: '',
         stats: newStats,
+        balance: newBalance,
+        lastPayout: payout,
         hasSavedGame: false,
         isPaused: false,
       });
@@ -491,6 +560,18 @@ const useGameStore = create((set, get) => {
       setHapticsEnabled(settings.haptics);
       saveSettings(settings);
       set({ settings });
+    },
+    toggleSound: () => {
+      const settings = { ...get().settings, sound: !get().settings.sound };
+      setSoundEnabled(settings.sound);
+      saveSettings(settings);
+      set({ settings });
+      if (settings.sound) sfx.tap();
+    },
+    setTable: (tableId) => {
+      const table = getTable(tableId);
+      sfx.tap();
+      set({ tableId: table.id, difficulty: table.difficulty, message: '' });
     },
     clearStats: async () => {
       const stats = await resetStats();
@@ -515,10 +596,11 @@ const useGameStore = create((set, get) => {
         showDoublesIndicator: false, turnFinished: false, turnInitialState: null,
         openingDice: { player: null, ai: null }, openingRolling: false,
         hasSavedGame: keepSave,
+        stake: keepSave ? get().stake : 0,
       });
     },
     setDifficulty: (d) => set({ difficulty: d }),
-    resetGame: () => get().startGame(get().difficulty),
+    resetGame: () => get().startGame(get().difficulty, get().tableId),
   };
 });
 
