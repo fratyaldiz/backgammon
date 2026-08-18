@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar } from 'expo-status-bar';
 import useGameStore from './src/store/gameStore';
+import { watchAudioSession } from './src/utils/sound';
 import MenuScreen from './src/screens/MenuScreen';
 import GameScreen from './src/screens/GameScreen';
 
@@ -35,6 +36,10 @@ export default function App() {
 
     // Kayıtlı oyun, ayarlar ve istatistikleri yükle
     initApp();
+
+    // Ses oturumu arama/alarm sonrası sıfırlanabilir; öne gelindiğinde tazele
+    const stopWatching = watchAudioSession();
+    return stopWatching;
   }, [initApp]);
 
   return (

@@ -108,7 +108,7 @@ const useGameStore = create((set, get) => {
       ]);
       setHapticsEnabled(settings.haptics);
       setSoundEnabled(settings.sound);
-      initSound();
+      await initSound();
       set({
         settings, stats,
         hasSavedGame: !!saved,

@@ -1,3 +1,4 @@
+import { AppState } from 'react-native';
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 
 /**
@@ -22,6 +23,7 @@ const VOLUME = { dice: 0.9, move: 0.7, hit: 0.95, bearOff: 0.7, coin: 0.8, win: 
 
 let enabled = true;
 let ready = false;
+let audioModeApplied = false;
 const pools = {};
 const cursor = {};
 
@@ -29,18 +31,42 @@ export function setSoundEnabled(v) {
   enabled = !!v;
 }
 
-export async function initSound() {
-  if (ready) return;
-  try {
-    // Sessize alma anahtarı açıkken de çalsın, diğer sesleri kesmesin
-    await setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: false,
-      interruptionMode: 'mixWithOthers',
-    });
-  } catch (e) {
-    // Ses kipi ayarlanamazsa varsayılanla devam edilir
+export function isAudioModeApplied() {
+  return audioModeApplied;
+}
+
+/**
+ * Ses oturumunu yapılandırır. Kritik ayar `playsInSilentMode`: iOS'ta yan
+ * taraftaki sessize alma anahtarı açıkken de oyun sesleri duyulsun diye.
+ *
+ * Tek bir denemeyle yetinilmez: yapılandırmanın herhangi bir alanı cihazda
+ * kabul edilmezse çağrı tümüyle başarısız olur ve sessiz mod ayarı da
+ * kaybolurdu. Bu yüzden giderek sadeleşen bir dizi deneme yapılır.
+ */
+async function applyAudioMode() {
+  const attempts = [
+    { playsInSilentMode: true, shouldPlayInBackground: false, interruptionMode: 'mixWithOthers' },
+    { playsInSilentMode: true, interruptionMode: 'mixWithOthers' },
+    { playsInSilentMode: true },
+  ];
+
+  for (const mode of attempts) {
+    try {
+      await setAudioModeAsync(mode);
+      audioModeApplied = true;
+      return true;
+    } catch (e) {
+      // Bir sonraki, daha sade yapılandırmayı dene
+    }
   }
+  audioModeApplied = false;
+  return false;
+}
+
+export async function initSound() {
+  if (ready) return audioModeApplied;
+
+  await applyAudioMode();
 
   try {
     for (const key of Object.keys(SOURCES)) {
@@ -57,6 +83,21 @@ export async function initSound() {
   } catch (e) {
     ready = false;   // ses yüklenemezse oyun sessiz çalışır
   }
+  return audioModeApplied;
+}
+
+/**
+ * Ses oturumu telefon araması, alarm veya başka bir uygulamanın sesi
+ * yüzünden sıfırlanabilir; bu durumda sessiz mod ayarı da kaybolur.
+ * Uygulama öne geldiğinde yapılandırma tazelenir.
+ */
+export function watchAudioSession() {
+  const sub = AppState.addEventListener('change', (state) => {
+    if (state === 'active') applyAudioMode();
+  });
+  return () => {
+    try { sub.remove(); } catch (e) { /* yoksay */ }
+  };
 }
 
 function play(key) {
