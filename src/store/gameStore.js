@@ -27,8 +27,16 @@ const useGameStore = create((set, get) => {
    * eder. Bu sayede duraklatma oyun fazını değiştirmek zorunda kalmaz ve
    * menü her an açılabilir (faz değiştirmek zincirleri koparıyordu).
    */
+  // Oyun kimliği: yeni oyun, menüye dönüş veya oyun sonu bunu artırır.
+  // Bekleyen zamanlayıcılar kendi nesillerini kontrol eder, böylece terk
+  // edilen bir turun zinciri arka planda çalışmaya devam etmez.
+  let epoch = 0;
+  const newEpoch = () => { epoch += 1; };
+
   const schedule = (fn, ms) => {
+    const startedAt = epoch;
     const tick = () => {
+      if (epoch !== startedAt) return;   // oyun değişti: bu zincir iptal
       if (get().isPaused) { setTimeout(tick, 250); return; }
       fn();
     };
@@ -133,6 +141,7 @@ const useGameStore = create((set, get) => {
 
     // ─── KAYITLI OYUNA DEVAM ─────────────────────
     continueGame: async () => {
+      newEpoch();
       const saved = await loadGame();
       if (!saved) { set({ hasSavedGame: false }); return; }
 
@@ -177,6 +186,7 @@ const useGameStore = create((set, get) => {
     // tableId verilmezse mevcut masa kullanılır. Bakiye masanın gerektirdiği
     // düzeyin altındaysa oyun başlamaz.
     startGame: (difficulty, tableId) => {
+      newEpoch();
       const state = get();
       const table = getTable(tableId || state.tableId || difficulty || 'medium');
 
@@ -316,6 +326,7 @@ const useGameStore = create((set, get) => {
         },
       });
 
+      // İkinci zar hafif gecikmeyle atıldığı için pencere biraz uzun tutulur
       schedule(() => {
         set({ diceRolling: false });
         const validMoves = getValidFirstMoves(board, bar, borneOff, currentPlayer, remainingMoves);
@@ -323,7 +334,7 @@ const useGameStore = create((set, get) => {
           set({ message: 'Hamle yok! Turu bitirebilirsiniz.', turnFinished: true });
         }
         persist();
-      }, DICE_SPIN_MS + 60);
+      }, DICE_SPIN_MS + 220);
     },
 
     // ─── DOKUNARAK OTOMATİK HAREKET ──────────────
@@ -474,7 +485,7 @@ const useGameStore = create((set, get) => {
       const remainingMoves = getMovesFromDice(dice[0], dice[1]);
       haptics.roll(); sfx.dice();
       set({ dice, remainingMoves, showDoublesIndicator: dice[0] === dice[1], diceRolling: true });
-      schedule(() => set({ diceRolling: false }), DICE_SPIN_MS + 60);
+      schedule(() => set({ diceRolling: false }), DICE_SPIN_MS + 220);
 
       // Yapay zeka hamlesine zar animasyonu bitmeden başlamaz; sonuç önce
       // görünür, kısa bir duraklamadan sonra taşlar oynanır.
@@ -523,6 +534,7 @@ const useGameStore = create((set, get) => {
     // ─── OYUN SONU ───────────────────────────────
     // forcedPoints verilirse mars hesabı yapılmaz (pes etme normal yenilgidir)
     finishGame: (winner, borneOff, forcedPoints) => {
+      newEpoch();
       const { playerColor, stats, stake, balance, lastBonusAt } = get();
       const win = forcedPoints ? { type: 'normal', points: forcedPoints } : getWinType(borneOff, winner);
       const playerWon = winner === playerColor;
@@ -596,6 +608,7 @@ const useGameStore = create((set, get) => {
 
     // ─── MENÜLER ─────────────────────────────────
     goToMenu: () => {
+      newEpoch();
       // Devam eden oyun varsa kaydı korunur, menüden sürdürülebilir
       const { gamePhase } = get();
       const keepSave = gamePhase !== 'game_over' && gamePhase !== 'menu';

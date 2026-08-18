@@ -187,7 +187,7 @@ const GameScreen = () => {
                 style={[styles.diceTray, { padding: s(7), borderRadius: s(13) }]}
               >
                 <Text style={[styles.openingLabel, { fontSize: labelFont }]}>RAKİP</Text>
-                <Die value={openingDice.ai} isUsed={false} rolling={openingRolling} size={dieSize} />
+                <Die value={openingDice.ai} isUsed={false} rolling={openingRolling} size={dieSize} from="left" />
               </LinearGradient>
             </View>
           )
@@ -206,6 +206,7 @@ const GameScreen = () => {
                   rolling={diceRolling}
                   onRoll={null}
                   size={dieSize}
+                  from="left"
                 />
                 <DiceStatus
                   doubles={showDoublesIndicator}
@@ -228,7 +229,7 @@ const GameScreen = () => {
               style={[styles.diceTray, { padding: s(7), borderRadius: s(13) }]}
             >
               <Text style={[styles.openingLabel, { fontSize: labelFont }]}>SİZ</Text>
-              <Die value={openingDice.player} isUsed={false} rolling={openingRolling} size={dieSize} />
+              <Die value={openingDice.player} isUsed={false} rolling={openingRolling} size={dieSize} from="right" />
             </LinearGradient>
           )}
 
@@ -245,6 +246,7 @@ const GameScreen = () => {
                 rolling={diceRolling}
                 onRoll={null}
                 size={dieSize}
+                from="right"
               />
               <DiceStatus
                 doubles={showDoublesIndicator}
