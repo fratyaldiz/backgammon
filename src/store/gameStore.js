@@ -521,9 +521,10 @@ const useGameStore = create((set, get) => {
     },
 
     // ─── OYUN SONU ───────────────────────────────
-    finishGame: (winner, borneOff) => {
+    // forcedPoints verilirse mars hesabı yapılmaz (pes etme normal yenilgidir)
+    finishGame: (winner, borneOff, forcedPoints) => {
       const { playerColor, stats, stake, balance, lastBonusAt } = get();
-      const win = getWinType(borneOff, winner);
+      const win = forcedPoints ? { type: 'normal', points: forcedPoints } : getWinType(borneOff, winner);
       const playerWon = winner === playerColor;
 
       const newStats = {
@@ -558,6 +559,15 @@ const useGameStore = create((set, get) => {
         hasSavedGame: false,
         isPaused: false,
       });
+    },
+
+    // ─── PES ET ──────────────────────────────────
+    // Bahis kaybedilir ama mars uygulanmaz: pes etmek normal yenilgi sayılır.
+    resignGame: () => {
+      const { playerColor, borneOff, gamePhase } = get();
+      if (gamePhase === 'menu' || gamePhase === 'game_over') return;
+      const aiColor = playerColor === WHITE ? BLACK : WHITE;
+      get().finishGame(aiColor, borneOff, 1);
     },
 
     // ─── AYARLAR / İSTATİSTİK ────────────────────

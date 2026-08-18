@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,6 +11,49 @@ import { getPipCount } from '../utils/gameLogic';
 import { getTable, formatCoins } from '../utils/economy';
 import { makeScale, clamp } from '../utils/layout';
 import { Ionicons } from '@expo/vector-icons';
+
+/**
+ * Sayı eski değerden yenisine doğru hızla sayar. Bakiye anında zıplamak
+ * yerine sayıldığında kazanç hissi belirginleşir.
+ */
+const CountUp = ({ from, to, duration = 700, style }) => {
+  const [value, setValue] = useState(from);
+
+  useEffect(() => {
+    if (from === to) { setValue(to); return; }
+    const start = Date.now();
+    const id = setInterval(() => {
+      const p = Math.min((Date.now() - start) / duration, 1);
+      // Sona doğru yavaşlar
+      const eased = 1 - Math.pow(1 - p, 3);
+      setValue(Math.round(from + (to - from) * eased));
+      if (p >= 1) clearInterval(id);
+    }, 40);
+    return () => clearInterval(id);
+  }, [from, to, duration]);
+
+  return <Text style={style}>{formatCoins(value)}</Text>;
+};
+
+/**
+ * Zarın altındaki durum satırı: çift atıldığını ve kaç hamle kaldığını
+ * gösterir. Zar dönerken gizlenir, aksi halde sonucu önceden ele verir.
+ */
+const DiceStatus = ({ doubles, remaining, rolling, font }) => {
+  if (rolling || remaining <= 0) return null;
+  return (
+    <View style={styles.diceStatus}>
+      {doubles && (
+        <View style={styles.doublesBadge}>
+          <Text style={[styles.doublesText, { fontSize: font * 0.9 }]}>ÇİFT</Text>
+        </View>
+      )}
+      <Text style={[styles.remainingText, { fontSize: font * 0.95 }]}>
+        {remaining} hamle
+      </Text>
+    </View>
+  );
+};
 
 /**
  * Kompakt oyuncu kartı. Yatay ekranda dikey alan kıymetli olduğu için
@@ -68,11 +111,16 @@ const GameScreen = () => {
     pauseGame, resumeGame, isPaused,
     openingDice, openingRolling, rollOpeningDice, diceRolling,
     winType, winPoints, stats, settings, toggleHaptics, toggleSound,
-    balance, stake, lastPayout, tableId
+    balance, stake, lastPayout, tableId,
+    showDoublesIndicator, resignGame
   } = useGameStore();
 
   const isOpeningRoll = gamePhase === 'opening_roll';
   const table = getTable(tableId);
+
+  // Bahis kaybettiren eylemler önce onay ister: 'newGame' | 'resign'
+  const [confirmAction, setConfirmAction] = useState(null);
+  const inProgress = gamePhase !== 'menu' && gamePhase !== 'game_over' && stake > 0;
 
   // Yerleşim ölçüleri cihaza göre oranlanır; çentik/ev göstergesi payları
   // güvenli alandan alınır, böylece hiçbir cihazda içerik kırpılmaz.
@@ -159,6 +207,12 @@ const GameScreen = () => {
                   onRoll={null}
                   size={dieSize}
                 />
+                <DiceStatus
+                  doubles={showDoublesIndicator}
+                  remaining={remainingMoves.length}
+                  rolling={diceRolling}
+                  font={labelFont}
+                />
               </LinearGradient>
             </View>
           )
@@ -191,6 +245,12 @@ const GameScreen = () => {
                 rolling={diceRolling}
                 onRoll={null}
                 size={dieSize}
+              />
+              <DiceStatus
+                doubles={showDoublesIndicator}
+                remaining={remainingMoves.length}
+                rolling={diceRolling}
+                font={labelFont}
               />
             </LinearGradient>
           )}
@@ -283,7 +343,10 @@ const GameScreen = () => {
               <Text style={[styles.payoutText, { color: lastPayout >= 0 ? THEME.colors.success : THEME.colors.danger }]}>
                 {lastPayout >= 0 ? '+' : '−'}{formatCoins(Math.abs(lastPayout))}
               </Text>
-              <Text style={styles.payoutBalance}>Bakiye {formatCoins(balance)}</Text>
+              <View style={styles.payoutBalanceRow}>
+                <Text style={styles.payoutBalance}>Bakiye </Text>
+                <CountUp from={balance - lastPayout} to={balance} style={styles.payoutBalance} />
+              </View>
             </View>
 
             <View style={styles.statsRow}>
@@ -336,11 +399,60 @@ const GameScreen = () => {
               <Text style={styles.statsChip}>Mars {stats.marsWon}</Text>
             </View>
 
-            <TouchableOpacity style={styles.overlayBtn} onPress={resetGame}>
+            <TouchableOpacity
+              style={styles.overlayBtn}
+              onPress={() => (inProgress ? setConfirmAction('newGame') : resetGame())}
+            >
               <Text style={styles.overlayBtnText}>Yeni Oyun</Text>
             </TouchableOpacity>
+
+            {inProgress && (
+              <TouchableOpacity
+                style={[styles.overlayBtn, styles.resignBtn]}
+                onPress={() => setConfirmAction('resign')}
+              >
+                <Text style={styles.overlayBtnText}>Pes Et</Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity style={[styles.overlayBtn, styles.overlayBtnSecondary]} onPress={goToMenu}>
               <Text style={styles.overlayBtnText}>Ana Menü</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Bahis kaybettiren eylemler için onay */}
+      {confirmAction && (
+        <View style={styles.overlay}>
+          <View style={styles.overlayBox}>
+            <Ionicons name="warning" size={s(30)} color={THEME.colors.danger} />
+            <Text style={styles.confirmTitle}>
+              {confirmAction === 'resign' ? 'Pes etmek istiyor musunuz?' : 'Oyunu bırakıp yeni oyun?'}
+            </Text>
+            <Text style={styles.confirmText}>
+              Devam eden oyun yenilgi sayılır ve{' '}
+              <Text style={styles.confirmAmount}>{formatCoins(stake)}</Text> kaybedersiniz.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.overlayBtn, styles.resignBtn]}
+              onPress={() => {
+                const action = confirmAction;
+                setConfirmAction(null);
+                if (action === 'resign') resignGame();
+                else resetGame();
+              }}
+            >
+              <Text style={styles.overlayBtnText}>
+                {confirmAction === 'resign' ? 'Evet, pes ediyorum' : 'Evet, yeni oyun'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.overlayBtn, styles.overlayBtnSecondary]}
+              onPress={() => setConfirmAction(null)}
+            >
+              <Text style={styles.overlayBtnText}>Vazgeç</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -608,6 +720,53 @@ const styles = StyleSheet.create({
   settingText: {
     color: THEME.colors.textPrimary,
     fontSize: 13,
+  },
+  diceStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 5,
+  },
+  doublesBadge: {
+    backgroundColor: THEME.colors.gold,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 5,
+  },
+  doublesText: {
+    color: THEME.colors.textDark,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+  },
+  remainingText: {
+    color: THEME.colors.textSecondary,
+    fontWeight: '600',
+  },
+  resignBtn: {
+    backgroundColor: 'rgba(231,76,60,0.85)',
+  },
+  confirmTitle: {
+    color: THEME.colors.textPrimary,
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  confirmText: {
+    color: THEME.colors.textSecondary,
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  confirmAmount: {
+    color: THEME.colors.danger,
+    fontWeight: 'bold',
+  },
+  payoutBalanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   walletBar: {
     position: 'absolute',
