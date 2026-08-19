@@ -14,6 +14,10 @@ const SAVE_VERSION = 1;
  * durumları (sürükleme, açılış zarı animasyonu, mesaj) kayda girmez.
  */
 export function serializeGame(s) {
+  // Bekleyen katlama teklifi kaydedilmez: teklif geçici bir etkileşimdir,
+  // saklanırsa geri yüklemede teklif olmadan bekleyen faz kalır ve oyun
+  // kilitlenir. Bu durumda tur, zar atma aşamasından sürdürülür.
+  const gamePhase = s.gamePhase === 'raise_pending' ? 'rolling' : s.gamePhase;
   return {
     v: SAVE_VERSION,
     savedAt: Date.now(),
@@ -24,7 +28,7 @@ export function serializeGame(s) {
     playerColor: s.playerColor,
     dice: s.dice,
     remainingMoves: s.remainingMoves,
-    gamePhase: s.gamePhase,
+    gamePhase,
     difficulty: s.difficulty,
     turnFinished: s.turnFinished,
     turnInitialState: s.turnInitialState,
@@ -32,6 +36,8 @@ export function serializeGame(s) {
     autoSkipCount: s.autoSkipCount,
     tableId: s.tableId,
     stake: s.stake,
+    multiplier: s.multiplier,
+    cubeOwner: s.cubeOwner,
   };
 }
 
@@ -42,7 +48,8 @@ function isValidSave(d) {
     && d.bar && d.borneOff
     && typeof d.currentPlayer === 'number'
     && typeof d.gamePhase === 'string'
-    && d.gamePhase !== 'menu' && d.gamePhase !== 'game_over';
+    && d.gamePhase !== 'menu' && d.gamePhase !== 'game_over'
+    && d.gamePhase !== 'raise_pending';
 }
 
 export async function saveGame(state) {

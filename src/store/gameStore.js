@@ -5,7 +5,7 @@ import {
   getValidFirstMoves, applyMove,
   isGameOver, isClosedOut, getWinType
 } from '../utils/gameLogic';
-import { getAIMoves } from '../utils/aiPlayer';
+import { getAIMoves, shouldOfferRaise, shouldAcceptRaise } from '../utils/aiPlayer';
 import {
   saveGame, loadGame, clearSavedGame,
   loadStats, saveStats, resetStats,
@@ -16,7 +16,8 @@ import { haptics, setHapticsEnabled } from '../utils/feedback';
 import { initSound, sfx, setSoundEnabled } from '../utils/sound';
 import {
   getTable, canPlay, settlement, forfeitAmount,
-  bonusStatus, BONUS_AMOUNT, STARTING_BALANCE
+  bonusStatus, BONUS_AMOUNT, STARTING_BALANCE,
+  nextMultiplier, canOfferRaise, balanceForRaise, MAX_MULTIPLIER
 } from '../utils/economy';
 
 const EMPTY_STATS = { played: 0, won: 0, lost: 0, marsWon: 0, marsLost: 0 };
@@ -107,6 +108,10 @@ const useGameStore = create((set, get) => {
     lastBonusAt: null,
     tableId: 'medium',
     stake: 0,          // sürmekte olan oyunun bahsi
+    multiplier: 1,     // bahis çarpanı (katlama)
+    cubeOwner: null,   // katlama hakkı kimde: null (ortada) | WHITE | BLACK
+    raiseOffer: null,  // { by: WHITE|BLACK, to: çarpan } — bekleyen öneri
+    raiseNotice: '',   // son katlama olayının kısa özeti
     lastPayout: 0,     // oyun sonu ekranında gösterilen kazanç/kayıp
 
     // ─── UYGULAMA AÇILIŞI ────────────────────────
@@ -160,6 +165,10 @@ const useGameStore = create((set, get) => {
         autoSkipCount: saved.autoSkipCount || 0,
         tableId: saved.tableId || 'medium',
         stake: saved.stake || getTable(saved.tableId || 'medium').bet,
+        multiplier: saved.multiplier || 1,
+        cubeOwner: saved.cubeOwner != null ? saved.cubeOwner : null,
+        raiseOffer: null,
+        raiseNotice: '',
         lastPayout: 0,
         selectedPoint: null,
         validDestinations: [],
@@ -194,7 +203,7 @@ const useGameStore = create((set, get) => {
       let balance = state.balance;
       const inProgress = state.gamePhase !== 'menu' && state.gamePhase !== 'game_over' && state.stake > 0;
       if (inProgress) {
-        balance = Math.max(0, balance + forfeitAmount(state.stake));
+        balance = Math.max(0, balance + forfeitAmount(state.stake, state.multiplier || 1));
       }
 
       if (!canPlay(balance, table)) {
@@ -209,6 +218,10 @@ const useGameStore = create((set, get) => {
         balance,
         tableId: table.id,
         stake: table.bet,
+        multiplier: 1,
+        cubeOwner: null,
+        raiseOffer: null,
+        raiseNotice: '',
         lastPayout: 0,
         board: createInitialBoard(),
         bar: { white: 0, black: 0 },
@@ -458,6 +471,7 @@ const useGameStore = create((set, get) => {
         moveHistory: [], selectedPoint: null, validDestinations: [],
         message: '', lastMove: null, showDoublesIndicator: false,
         turnFinished: false, turnInitialState: null, diceRolling: false,
+        raiseNotice: '',
       });
 
       if (nextPlayer === playerColor) {
@@ -471,7 +485,24 @@ const useGameStore = create((set, get) => {
 
     // ─── YAPAY ZEKA TURU ─────────────────────────
     executeAITurn: () => {
-      const { board, bar, borneOff, difficulty, currentPlayer } = get();
+      const { board, bar, borneOff, difficulty, currentPlayer, multiplier,
+              cubeOwner, playerColor, stake, balance, raiseOffer } = get();
+
+      // Zar atmadan önce: konum yeterince iyiyse bahsi katlamayı öner
+      if (!raiseOffer && canOfferRaise(multiplier, cubeOwner, currentPlayer)) {
+        const to = nextMultiplier(multiplier);
+        // Oyuncu kabul ederse karşılayabilmeli; karşılayamayacaksa teklif edilmez
+        const playerCanCover = balance >= stake * to * 2;
+        if (playerCanCover && shouldOfferRaise(board, bar, borneOff, currentPlayer, difficulty)) {
+          sfx.tap();
+          set({
+            raiseOffer: { by: currentPlayer, to },
+            gamePhase: 'raise_pending',
+            message: 'Rakip bahsi katlamak istiyor.',
+          });
+          return;
+        }
+      }
 
       // Tahtamız tamamen kapalıysa rakibin bar'daki taşı hiçbir zarla giremez;
       // zar atıp beklemenin anlamı yok, tur hızla geçilir.
@@ -535,7 +566,7 @@ const useGameStore = create((set, get) => {
     // forcedPoints verilirse mars hesabı yapılmaz (pes etme normal yenilgidir)
     finishGame: (winner, borneOff, forcedPoints) => {
       newEpoch();
-      const { playerColor, stats, stake, balance, lastBonusAt } = get();
+      const { playerColor, stats, stake, balance, lastBonusAt, multiplier } = get();
       const win = forcedPoints ? { type: 'normal', points: forcedPoints } : getWinType(borneOff, winner);
       const playerWon = winner === playerColor;
 
@@ -549,7 +580,7 @@ const useGameStore = create((set, get) => {
 
       // Bahis hesaplaşması: mars iki kat. Masaya giriş bahsin iki katı bakiye
       // istediği için sonuç hiçbir zaman eksiye düşmez.
-      const payout = settlement(stake, win.points, playerWon);
+      const payout = settlement(stake, win.points, playerWon, multiplier || 1);
       const newBalance = Math.max(0, balance + payout);
 
       if (playerWon) { haptics.win(); sfx.win(); }
@@ -571,6 +602,95 @@ const useGameStore = create((set, get) => {
         hasSavedGame: false,
         isPaused: false,
       });
+    },
+
+    // ─── BAHSİ KATLAMA ───────────────────────────
+    // Sıradaki taraf, zar atmadan önce bahsi iki katına çıkarmayı önerebilir.
+    // Kabul edilirse çarpan katlanır ve katlama hakkı kabul edene geçer;
+    // reddedilirse oyun o anki değerinden kaybedilir.
+    offerRaise: () => {
+      const { gamePhase, currentPlayer, playerColor, multiplier, cubeOwner,
+              balance, stake, raiseOffer } = get();
+      if (raiseOffer) return false;
+      // Yalnızca kendi sıramızda ve zar atmadan önce
+      if (gamePhase !== 'rolling' || currentPlayer !== playerColor) return false;
+      if (!canOfferRaise(multiplier, cubeOwner, playerColor)) return false;
+      // Katlanmış bahsin mars kaybını karşılayacak bakiye şartı
+      if (balance < balanceForRaise(stake, multiplier)) {
+        set({ message: 'Katlamak için bakiyeniz yetersiz.' });
+        return false;
+      }
+
+      const to = nextMultiplier(multiplier);
+      sfx.tap(); haptics.tap();
+      set({ raiseOffer: { by: playerColor, to }, gamePhase: 'raise_pending', message: '' });
+
+      // Rakip düşünür, sonra kabul veya ret
+      schedule(() => get().resolveAIRaiseResponse(), 1400);
+      return true;
+    },
+
+    // Oyuncunun rakipten gelen öneriye yanıtı
+    respondToRaise: (accept) => {
+      const { raiseOffer, playerColor, multiplier, borneOff, balance, stake } = get();
+      if (!raiseOffer || raiseOffer.by === playerColor) return;
+      const aiColor = playerColor === WHITE ? BLACK : WHITE;
+
+      if (!accept) {
+        // Reddeden oyunu o anki değerinden kaybeder (katlama uygulanmaz)
+        sfx.lose();
+        set({ raiseOffer: null, raiseNotice: '' });
+        get().finishGame(aiColor, borneOff, 1);
+        return;
+      }
+
+      // Kabul: bakiye katlanmış mars riskini karşılayamıyorsa kabul edilemez
+      if (balance < stake * raiseOffer.to * 2) {
+        set({ message: 'Kabul için bakiyeniz yetersiz — teklif reddedildi.' });
+        sfx.lose();
+        set({ raiseOffer: null, raiseNotice: '' });
+        get().finishGame(aiColor, borneOff, 1);
+        return;
+      }
+
+      sfx.coin(); haptics.bearOff();
+      set({
+        multiplier: raiseOffer.to,
+        cubeOwner: playerColor,      // katlama hakkı kabul edene geçer
+        raiseOffer: null,
+        raiseNotice: `Bahis ×${raiseOffer.to}`,
+        gamePhase: 'ai_thinking',
+        message: 'Rakip düşünüyor...',
+      });
+      persist();
+      schedule(() => get().executeAITurn(), 700);
+    },
+
+    // Yapay zekanın oyuncunun teklifine yanıtı
+    resolveAIRaiseResponse: () => {
+      const { raiseOffer, board, bar, borneOff, playerColor, difficulty, stake } = get();
+      if (!raiseOffer) return;
+      const aiColor = playerColor === WHITE ? BLACK : WHITE;
+
+      const accept = shouldAcceptRaise(board, bar, borneOff, aiColor, difficulty);
+
+      if (!accept) {
+        // Rakip pas geçti: oyunu o anki değerinden kaybeder
+        sfx.win(); haptics.win();
+        set({ raiseOffer: null, raiseNotice: 'Rakip pas geçti' });
+        get().finishGame(playerColor, borneOff, 1);
+        return;
+      }
+
+      sfx.coin();
+      set({
+        multiplier: raiseOffer.to,
+        cubeOwner: aiColor,
+        raiseOffer: null,
+        raiseNotice: `Rakip kabul etti — bahis ×${raiseOffer.to}`,
+        gamePhase: 'rolling',
+      });
+      persist();
     },
 
     // ─── PES ET ──────────────────────────────────
@@ -626,6 +746,9 @@ const useGameStore = create((set, get) => {
         openingDice: { player: null, ai: null }, openingRolling: false, diceRolling: false,
         hasSavedGame: keepSave,
         stake: keepSave ? get().stake : 0,
+        multiplier: keepSave ? get().multiplier : 1,
+        cubeOwner: keepSave ? get().cubeOwner : null,
+        raiseOffer: null, raiseNotice: '',
       });
     },
     setDifficulty: (d) => set({ difficulty: d }),

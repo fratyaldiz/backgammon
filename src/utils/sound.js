@@ -31,10 +31,6 @@ export function setSoundEnabled(v) {
   enabled = !!v;
 }
 
-export function isAudioModeApplied() {
-  return audioModeApplied;
-}
-
 /**
  * Ses oturumunu yapılandırır. Kritik ayar `playsInSilentMode`: iOS'ta yan
  * taraftaki sessize alma anahtarı açıkken de oyun sesleri duyulsun diye.

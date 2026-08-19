@@ -7,18 +7,43 @@
  * katı bakiye ister; böylece bakiye hiçbir zaman eksiye düşmez.
  */
 
-export const STARTING_BALANCE = 1000;
+export const STARTING_BALANCE = 5000;
 
 // Altı saatte bir verilen ödül. Şampiyon masasına girmeye yeter, yani
 // bakiyesi biten oyuncu beklediğinde en zor modda tekrar oynayabilir.
-export const BONUS_AMOUNT = 1000;
+export const BONUS_AMOUNT = 5000;
 export const BONUS_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 export const TABLES = [
-  { id: 'easy', name: 'Acemi Masası', bet: 50, difficulty: 'easy', desc: 'Rastgele hamleler' },
-  { id: 'medium', name: 'Usta Masası', bet: 200, difficulty: 'medium', desc: '' },
-  { id: 'hard', name: 'Şampiyon Masası', bet: 500, difficulty: 'hard', desc: '' },
+  { id: 'easy', name: 'Acemi Masası', bet: 250, difficulty: 'easy', desc: 'Rastgele hamleler' },
+  { id: 'medium', name: 'Usta Masası', bet: 1000, difficulty: 'medium', desc: '' },
+  { id: 'hard', name: 'Şampiyon Masası', bet: 2500, difficulty: 'hard', desc: '' },
 ];
+
+/**
+ * Oyun içi bahis katlama. Sıradaki taraf, zar atmadan önce bahsi iki katına
+ * çıkarmayı önerebilir. Karşı taraf kabul ederse çarpan ikiye katlanır ve
+ * katlama hakkı ona geçer; reddederse oyunu o anki değerinden kaybeder.
+ *
+ * Tavladaki çift değer küpünün kuralı budur; katlama hakkının el değiştirmesi
+ * sınırsız katlamayı engeller.
+ */
+export const MAX_MULTIPLIER = 8;
+
+export function nextMultiplier(current) {
+  return Math.min(current * 2, MAX_MULTIPLIER);
+}
+
+export function canOfferRaise(multiplier, cubeOwner, side) {
+  if (multiplier >= MAX_MULTIPLIER) return false;
+  // Küp ortadaysa iki taraf da önerebilir; sahibi varsa yalnızca sahibi
+  return cubeOwner === null || cubeOwner === side;
+}
+
+/** Katlama önerisi için gereken bakiye (mars riski dahil). */
+export function balanceForRaise(bet, currentMultiplier) {
+  return bet * nextMultiplier(currentMultiplier) * 2;
+}
 
 export function getTable(id) {
   return TABLES.find(t => t.id === id) || TABLES[0];
@@ -33,24 +58,19 @@ export function canPlay(balance, table) {
   return balance >= minBalanceFor(table);
 }
 
-/** Oyuncunun girebileceği en yüksek masa (yoksa null). */
-export function highestAffordableTable(balance) {
-  let best = null;
-  for (const t of TABLES) if (canPlay(balance, t)) best = t;
-  return best;
-}
 
 /**
  * Oyun sonucunun bakiyeye etkisi.
  * points: 1 (normal) veya 2 (mars)
  */
-export function settlement(bet, points, playerWon) {
-  return playerWon ? bet * points : -bet * points;
+export function settlement(bet, points, playerWon, multiplier = 1) {
+  const value = bet * points * multiplier;
+  return playerWon ? value : -value;
 }
 
 /** Yarıda bırakılan oyun normal yenilgi sayılır. */
-export function forfeitAmount(bet) {
-  return -bet;
+export function forfeitAmount(bet, multiplier = 1) {
+  return -bet * multiplier;
 }
 
 // ─── Ödül sayacı ─────────────────────────────────

@@ -3,6 +3,7 @@ import { View, StyleSheet, Text, PanResponder, Animated, Easing } from 'react-na
 import { LinearGradient } from 'expo-linear-gradient';
 import useGameStore from '../store/gameStore';
 import Checker from './Checker';
+import Dice, { Die } from './Dice';
 import THEME from '../constants/theme';
 import { WHITE, BLACK } from '../utils/diceUtils';
 import { clamp } from '../utils/layout';
@@ -110,6 +111,8 @@ const Board = () => {
   const BEAR_OFF_W = m ? m.bearOffW : 0;
   const TRIANGLE_HEIGHT = m ? m.triangleH : 0;
   const BAR_CHECKER_SIZE = CHECKER_SIZE;   // kırık taş normal taşla aynı boyutta
+  const DIE_SIZE = m ? clamp(m.pointW * 0.82, 22, 52) : 0;
+  const halfW = POINT_WIDTH * 6;
 
   // Taşlar tam boyutta olduğu için çok sayıda kırık taş bar'a sığmayabilir;
   // 3'ten sonrası kademeli olarak üst üste biner.
@@ -132,11 +135,19 @@ const Board = () => {
   const gamePhase = useGameStore(s => s.gamePhase);
   const isPaused = useGameStore(s => s.isPaused);
   const diceRolling = useGameStore(s => s.diceRolling);
+  const dice = useGameStore(s => s.dice);
+  const openingDice = useGameStore(s => s.openingDice);
+  const openingRolling = useGameStore(s => s.openingRolling);
+  const showDoublesIndicator = useGameStore(s => s.showDoublesIndicator);
   const remainingMoves = useGameStore(s => s.remainingMoves);
   const lastMove = useGameStore(s => s.lastMove);
   const moveSeq = useGameStore(s => s.moveSeq);
   const selectPoint = useGameStore(s => s.selectPoint);
   const moveToDestination = useGameStore(s => s.moveToDestination);
+
+  const isOpeningRoll = gamePhase === 'opening_roll';
+  // Zarı kim attıysa kendi yarısına düşer
+  const isPlayerRolling = currentPlayer === playerColor;
 
   // Sürükleme state (ref ile - PanResponder closure sorunu için)
   const dragFrom = useRef(null);
@@ -477,6 +488,55 @@ const Board = () => {
           {renderQuadrant([18, 19, 20, 21, 22, 23], true)}
         </View>
 
+        {/* Zarlar tahtanın üstüne düşer: atan taraf kendi yarısına atar.
+            Oyuncu (siyah) sağ yarıya, rakip sol yarıya. */}
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          {isOpeningRoll ? (
+            <>
+              {openingDice.ai !== null && (
+                <View style={[styles.diceSpot, { left: 0, width: halfW, top: 0, bottom: 0 }]}>
+                  <Die value={openingDice.ai} isUsed={false} rolling={openingRolling} size={DIE_SIZE} from="left" />
+                </View>
+              )}
+              {openingDice.player !== null && (
+                <View style={[styles.diceSpot, { left: halfW + BAR_W, width: halfW, top: 0, bottom: 0 }]}>
+                  <Die value={openingDice.player} isUsed={false} rolling={openingRolling} size={DIE_SIZE} from="right" />
+                </View>
+              )}
+            </>
+          ) : (
+            dice && (
+              <View style={[
+                styles.diceSpot,
+                isPlayerRolling
+                  ? { left: halfW + BAR_W, width: halfW, top: 0, bottom: 0 }
+                  : { left: 0, width: halfW, top: 0, bottom: 0 },
+              ]}>
+                <Dice
+                  dice={dice}
+                  remainingMoves={remainingMoves}
+                  rolling={diceRolling}
+                  onRoll={null}
+                  size={DIE_SIZE}
+                  from={isPlayerRolling ? 'right' : 'left'}
+                />
+                {!diceRolling && remainingMoves.length > 0 && (
+                  <View style={styles.diceStatus}>
+                    {showDoublesIndicator && (
+                      <View style={styles.doublesBadge}>
+                        <Text style={[styles.doublesText, { fontSize: DIE_SIZE * 0.26 }]}>ÇİFT</Text>
+                      </View>
+                    )}
+                    <Text style={[styles.remainingText, { fontSize: DIE_SIZE * 0.27 }]}>
+                      {remainingMoves.length} hamle
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )
+          )}
+        </View>
+
         {/* Dokunma + Sürükleme overlay */}
         <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers} pointerEvents="box-only" />
 
@@ -645,6 +705,37 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.9,
     shadowRadius: 5,
     elevation: 4,
+  },
+  diceSpot: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 150,
+  },
+  diceStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 4,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  doublesBadge: {
+    backgroundColor: THEME.colors.gold,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 5,
+  },
+  doublesText: {
+    color: THEME.colors.textDark,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  remainingText: {
+    color: THEME.colors.textPrimary,
+    fontWeight: '600',
   },
   floatingChecker: {
     position: 'absolute',

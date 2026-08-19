@@ -639,3 +639,93 @@ export function getAIMoves(board, bar, borneOff, player, dice, difficulty = 'eas
 
 // Değerlendirme fonksiyonu ve ağırlıkları: test/ayar araçları için dışa açık
 export { evaluateExpert, W as EVAL_WEIGHTS };
+
+// ─────────────────────────────────────────────────────────────
+// KAZANMA OLASILIĞI
+//
+// Konum skoru tek başına bahis kararı vermeye yetmez; skorun kazanma
+// olasılığına çevrilmesi gerekir. Katsayılar uzman AI'ın kendi kendine
+// oynadığı yüzlerce oyundan toplanan örneklerle uydurulmuştur (lojistik
+// regresyon). Temas oyunu ile saf yarış ayrı ayrı kalibre edilir, çünkü
+// skorun ölçeği bu iki evrede farklıdır.
+// ─────────────────────────────────────────────────────────────
+// 300 kendi kendine oyun, 4578 örnekle uyduruldu.
+//
+// Sabit terim bilerek sıfırdır: oyun simetrik olduğuna göre bir konumun
+// iki taraf için olasılıkları toplamı 1 etmelidir. Skor da simetrik
+// olduğundan (skor(P) = -skor(rakip)) bu ancak sabit terim sıfırken
+// sağlanır. Uydurmada çıkan küçük sapma veri dengesizliğinden gelir ve
+// bırakılırsa iki taraf da kendini favori sanabilir.
+const WIN_PROB_COEF = {
+  contact: { w1: 0.019677 },
+  race: { w1: 0.056114 },
+};
+
+function hasContactNow(board, bar) {
+  if ((bar.white || 0) > 0 || (bar.black || 0) > 0) return true;
+  let maxW = -1, minB = 24;
+  for (let i = 0; i < 24; i++) {
+    if (board[i] > 0 && i > maxW) maxW = i;
+    if (board[i] < 0 && i < minB) minB = i;
+  }
+  return maxW > minB;
+}
+
+/** Verilen taraf için kazanma olasılığı (0-1). */
+export function winProbability(board, bar, borneOff, player) {
+  const score = evaluateExpert(board, bar, borneOff, player);
+  const c = hasContactNow(board, bar) ? WIN_PROB_COEF.contact : WIN_PROB_COEF.race;
+  const p = 1 / (1 + Math.exp(-c.w1 * score));
+  return Math.min(Math.max(p, 0.01), 0.99);
+}
+
+// ─────────────────────────────────────────────────────────────
+// BAHİS KATLAMA KARARLARI
+//
+// Klasik tavla ölçütleri: kazanma ihtimali yaklaşık %70'i geçtiğinde
+// katlamak kârlıdır; karşı taraf ise %25'in üstünde şansı varsa kabul
+// etmelidir (reddederse mevcut bahsi kesin kaybeder, kabul ederse iki
+// katına oynar ama oyunda kalır).
+//
+// Sabit eşik makine gibi durur; bu yüzden kararlara zorluğa bağlı bir
+// oynaklık ve küçük bir cesaret payı eklenir. Böylece rakip bazen sınırda
+// katlar, bazen zayıf konumda blöfe yakın bir kabul yapar.
+// ─────────────────────────────────────────────────────────────
+const CUBE_STYLE = {
+  easy:   { offerAt: 0.86, takeDown: 0.34, jitter: 0.10, boldness: 0.00 },
+  medium: { offerAt: 0.76, takeDown: 0.28, jitter: 0.06, boldness: 0.02 },
+  hard:   { offerAt: 0.70, takeDown: 0.24, jitter: 0.04, boldness: 0.04 },
+};
+
+function styleFor(difficulty) {
+  return CUBE_STYLE[difficulty] || CUBE_STYLE.medium;
+}
+
+/**
+ * Katlama önerilsin mi? Çok önde olunan konumda katlamak da kötüdür:
+ * rakip pas geçer, kazanç tek katta kalır. Bu yüzden üst sınır konur.
+ */
+export function shouldOfferRaise(board, bar, borneOff, player, difficulty) {
+  const st = styleFor(difficulty);
+  const p = winProbability(board, bar, borneOff, player);
+  const noise = (Math.random() * 2 - 1) * st.jitter;
+  const effective = p + noise + st.boldness;
+
+  // Kazanç neredeyse kesinken katlamak rakibi kaçırır: pas geçer, tek kat kalır
+  if (p > 0.93) return false;
+  return effective >= st.offerAt;
+}
+
+/**
+ * Gelen katlama kabul edilsin mi? Reddetmek mevcut bahsi kesin kaybettirir,
+ * kabul etmek oyunda kalmayı sağlar; bu yüzden eşik %50 değil, %25 civarıdır.
+ */
+export function shouldAcceptRaise(board, bar, borneOff, player, difficulty) {
+  const st = styleFor(difficulty);
+  const p = winProbability(board, bar, borneOff, player);
+  const noise = (Math.random() * 2 - 1) * st.jitter;
+  const effective = p + noise + st.boldness;
+  return effective >= st.takeDown;
+}
+
+export { WIN_PROB_COEF };

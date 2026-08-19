@@ -4,11 +4,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import useGameStore from '../store/gameStore';
 import Board from '../components/Board';
-import Dice, { Die } from '../components/Dice';
 import THEME from '../constants/theme';
 import { WHITE, BLACK } from '../utils/diceUtils';
 import { getPipCount } from '../utils/gameLogic';
-import { getTable, formatCoins } from '../utils/economy';
+import { getTable, formatCoins, canOfferRaise, nextMultiplier, balanceForRaise } from '../utils/economy';
 import { makeScale, clamp } from '../utils/layout';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -33,26 +32,6 @@ const CountUp = ({ from, to, duration = 700, style }) => {
   }, [from, to, duration]);
 
   return <Text style={style}>{formatCoins(value)}</Text>;
-};
-
-/**
- * Zarın altındaki durum satırı: çift atıldığını ve kaç hamle kaldığını
- * gösterir. Zar dönerken gizlenir, aksi halde sonucu önceden ele verir.
- */
-const DiceStatus = ({ doubles, remaining, rolling, font }) => {
-  if (rolling || remaining <= 0) return null;
-  return (
-    <View style={styles.diceStatus}>
-      {doubles && (
-        <View style={styles.doublesBadge}>
-          <Text style={[styles.doublesText, { fontSize: font * 0.9 }]}>ÇİFT</Text>
-        </View>
-      )}
-      <Text style={[styles.remainingText, { fontSize: font * 0.95 }]}>
-        {remaining} hamle
-      </Text>
-    </View>
-  );
 };
 
 /**
@@ -109,10 +88,11 @@ const GameScreen = () => {
     borneOff, message, winner, goToMenu, resetGame,
     turnFinished, moveHistory, undoMove, endTurn,
     pauseGame, resumeGame, isPaused,
-    openingDice, openingRolling, rollOpeningDice, diceRolling,
+    openingDice, openingRolling, rollOpeningDice,
     winType, winPoints, stats, settings, toggleHaptics, toggleSound,
     balance, stake, lastPayout, tableId,
-    showDoublesIndicator, resignGame
+    resignGame, multiplier, cubeOwner, raiseOffer, raiseNotice,
+    offerRaise, respondToRaise
   } = useGameStore();
 
   const isOpeningRoll = gamePhase === 'opening_roll';
@@ -121,6 +101,9 @@ const GameScreen = () => {
   // Bahis kaybettiren eylemler önce onay ister: 'newGame' | 'resign'
   const [confirmAction, setConfirmAction] = useState(null);
   const inProgress = gamePhase !== 'menu' && gamePhase !== 'game_over' && stake > 0;
+  // Katlama önerilebilir mi: hak bizde (veya ortada) ve mars riskini karşılıyoruz
+  const canRaise = canOfferRaise(multiplier, cubeOwner, playerColor)
+    && balance >= balanceForRaise(stake, multiplier);
 
   // Yerleşim ölçüleri cihaza göre oranlanır; çentik/ev göstergesi payları
   // güvenli alandan alınır, böylece hiçbir cihazda içerik kırpılmaz.
@@ -140,7 +123,6 @@ const GameScreen = () => {
     badge: clamp(sidebarW * 0.115, 9.5, 13),
   };
   // Zar ve buton ölçüleri de ekranla birlikte oranlanır
-  const dieSize = clamp(winH * 0.085, 26, 46);
   const labelFont = clamp(winH * 0.024, 8, 12);
   const iconSize = clamp(winH * 0.055, 18, 28);
   const btnFont = clamp(winH * 0.026, 9, 13);
@@ -170,93 +152,17 @@ const GameScreen = () => {
           font={font}
         />
         {message ? <Text style={[styles.messageText, { fontSize: font.label * 1.15 }]}>{message}</Text> : null}
+        {raiseNotice ? (
+          <Text style={[styles.raiseNotice, { fontSize: font.label * 1.1 }]}>{raiseNotice}</Text>
+        ) : null}
       </View>
 
       {/* Orta Alan - Tahta */}
       <View style={styles.boardWrapper}>
         <Board />
         
-        {/* SOL BÖLME — rakibin zarları (açılışta da, turlarda da aynı yer) */}
-        {isOpeningRoll ? (
-          openingDice.ai !== null && (
-            <View style={styles.diceOverlay}>
-              <LinearGradient
-                colors={THEME.gradients.diceTray}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={[styles.diceTray, { padding: s(7), borderRadius: s(13) }]}
-              >
-                <Text style={[styles.openingLabel, { fontSize: labelFont }]}>RAKİP</Text>
-                <Die value={openingDice.ai} isUsed={false} rolling={openingRolling} size={dieSize} from="left" />
-              </LinearGradient>
-            </View>
-          )
-        ) : (
-          dice && !isPlayerTurn && (
-            <View style={styles.diceOverlay}>
-              <LinearGradient
-                colors={THEME.gradients.diceTray}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={[styles.diceTray, { padding: s(7), borderRadius: s(13) }]}
-              >
-                <Dice
-                  dice={dice}
-                  remainingMoves={remainingMoves}
-                  rolling={diceRolling}
-                  onRoll={null}
-                  size={dieSize}
-                  from="left"
-                />
-                <DiceStatus
-                  doubles={showDoublesIndicator}
-                  remaining={remainingMoves.length}
-                  rolling={diceRolling}
-                  font={labelFont}
-                />
-              </LinearGradient>
-            </View>
-          )
-        )}
-
-        {/* SAĞ BÖLME — kendi zarlarım (açılışta da, turlarda da aynı yer) + butonlar */}
+        {/* SAĞ — aksiyon butonları (zarlar tahtanın üstünde) */}
         <View style={styles.actionOverlay}>
-          {isOpeningRoll && openingDice.player !== null && (
-            <LinearGradient
-              colors={THEME.gradients.diceTray}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={[styles.diceTray, { padding: s(7), borderRadius: s(13) }]}
-            >
-              <Text style={[styles.openingLabel, { fontSize: labelFont }]}>SİZ</Text>
-              <Die value={openingDice.player} isUsed={false} rolling={openingRolling} size={dieSize} from="right" />
-            </LinearGradient>
-          )}
-
-          {!isOpeningRoll && dice && isPlayerTurn && (
-            <LinearGradient
-              colors={THEME.gradients.diceTray}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={[styles.diceTray, { padding: s(7), borderRadius: s(13) }]}
-            >
-              <Dice
-                dice={dice}
-                remainingMoves={remainingMoves}
-                rolling={diceRolling}
-                onRoll={null}
-                size={dieSize}
-                from="right"
-              />
-              <DiceStatus
-                doubles={showDoublesIndicator}
-                remaining={remainingMoves.length}
-                rolling={diceRolling}
-                font={labelFont}
-              />
-            </LinearGradient>
-          )}
-
           {isOpeningRoll && openingDice.player === null && !openingRolling && (
             <TouchableOpacity style={[styles.rollButton, { minWidth: clamp(winH * 0.17, 60, 96), paddingVertical: s(9) }]} onPress={rollOpeningDice}>
               <Ionicons name="dice" size={iconSize} color={THEME.colors.textDark} />
@@ -268,6 +174,18 @@ const GameScreen = () => {
             <TouchableOpacity style={[styles.rollButton, { minWidth: clamp(winH * 0.17, 60, 96), paddingVertical: s(9) }]} onPress={rollDice}>
               <Ionicons name="dice" size={iconSize} color={THEME.colors.textDark} />
               <Text style={[styles.rollButtonLabel, { fontSize: btnFont }]}>ZAR AT</Text>
+            </TouchableOpacity>
+          )}
+
+          {isPlayerTurn && gamePhase === 'rolling' && canRaise && (
+            <TouchableOpacity
+              style={[styles.raiseButton, { minWidth: clamp(winH * 0.155, 54, 88), paddingVertical: s(7) }]}
+              onPress={offerRaise}
+            >
+              <Ionicons name="trending-up" size={iconSize * 0.85} color={THEME.colors.textPrimary} />
+              <Text style={[styles.actionButtonLabel, { fontSize: btnFont * 0.85 }]}>
+                ×{nextMultiplier(multiplier)} Katla
+              </Text>
             </TouchableOpacity>
           )}
 
@@ -312,7 +230,12 @@ const GameScreen = () => {
         </View>
         <View style={styles.walletChip}>
           <Text style={[styles.stakeLabel, { fontSize: labelFont * 0.85 }]}>{table.name}</Text>
-          <Text style={[styles.walletText, { fontSize: labelFont }]}>{formatCoins(stake)}</Text>
+          <Text style={[styles.walletText, { fontSize: labelFont }]}>{formatCoins(stake * multiplier)}</Text>
+          {multiplier > 1 && (
+            <View style={styles.multiplierBadge}>
+              <Text style={[styles.multiplierText, { fontSize: labelFont * 0.8 }]}>×{multiplier}</Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -420,6 +343,44 @@ const GameScreen = () => {
             <TouchableOpacity style={[styles.overlayBtn, styles.overlayBtnSecondary]} onPress={goToMenu}>
               <Text style={styles.overlayBtnText}>Ana Menü</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Rakipten gelen katlama teklifi */}
+      {raiseOffer && raiseOffer.by !== playerColor && (
+        <View style={styles.overlay}>
+          <View style={styles.overlayBox}>
+            <Ionicons name="trending-up" size={s(30)} color={THEME.colors.gold} />
+            <Text style={styles.confirmTitle}>Rakip bahsi katlamak istiyor</Text>
+            <Text style={styles.confirmText}>
+              Kabul ederseniz oyun{' '}
+              <Text style={styles.confirmAmount}>{formatCoins(stake * raiseOffer.to)}</Text>{' '}
+              değerinde olur ve katlama hakkı size geçer.
+              {'\n'}Reddederseniz{' '}
+              <Text style={styles.confirmAmount}>{formatCoins(stake * multiplier)}</Text>{' '}
+              kaybedip oyun biter.
+            </Text>
+
+            <TouchableOpacity style={styles.overlayBtn} onPress={() => respondToRaise(true)}>
+              <Text style={styles.overlayBtnText}>Kabul et (×{raiseOffer.to})</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.overlayBtn, styles.resignBtn]}
+              onPress={() => respondToRaise(false)}
+            >
+              <Text style={styles.overlayBtnText}>Pas geç</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Kendi teklifimiz beklemede */}
+      {raiseOffer && raiseOffer.by === playerColor && (
+        <View style={styles.overlay} pointerEvents="none">
+          <View style={styles.overlayBox}>
+            <Text style={styles.confirmTitle}>Teklif iletildi</Text>
+            <Text style={styles.confirmText}>Rakip düşünüyor...</Text>
           </View>
         </View>
       )}
@@ -769,6 +730,32 @@ const styles = StyleSheet.create({
   payoutBalanceRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  multiplierBadge: {
+    backgroundColor: THEME.colors.danger,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
+    marginLeft: 2,
+  },
+  multiplierText: {
+    color: '#FFF',
+    fontWeight: '900',
+  },
+  raiseButton: {
+    backgroundColor: 'rgba(212,175,55,0.28)',
+    borderWidth: 1.5,
+    borderColor: THEME.colors.gold,
+    paddingHorizontal: 6,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  raiseNotice: {
+    color: THEME.colors.goldLight,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 6,
   },
   walletBar: {
     position: 'absolute',

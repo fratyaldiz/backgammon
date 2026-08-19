@@ -248,13 +248,6 @@ export function getValidFirstMoves(board, bar, borneOff, player, dice) {
   return firstMoves;
 }
 
-export function getValidNextMoves(board, bar, borneOff, player, remainingDice, moveHistory) {
-  let currentState = cloneGameState(board, bar, borneOff);
-  for (const m of moveHistory) {
-    currentState = applyMove(currentState.board, currentState.bar, currentState.borneOff, m, player);
-  }
-  return getValidFirstMoves(currentState.board, currentState.bar, currentState.borneOff, player, remainingDice);
-}
 
 export function isGameOver(borneOff) {
   if (borneOff.white === 15) return { gameOver: true, winner: WHITE };
@@ -289,59 +282,3 @@ export function getPipCount(board, bar, player) {
   return pips;
 }
 
-export function evaluateBoard(board, bar, borneOff, player) {
-  let score = 0;
-  const opp = player === WHITE ? BLACK : WHITE;
-
-  const myPips = getPipCount(board, bar, player);
-  const oppPips = getPipCount(board, bar, opp);
-  score += (oppPips - myPips) * 2; 
-
-  const myBorneOff = player === WHITE ? borneOff.white : borneOff.black;
-  score += myBorneOff * 10;
-
-  const myBar = player === WHITE ? bar.white : bar.black;
-  const oppBar = player === WHITE ? bar.black : bar.white;
-  score -= myBar * 15;
-  score += oppBar * 15;
-
-  let myBlots = 0;
-  let oppBlots = 0;
-  let myPoints = 0;
-  let consecutivePoints = 0;
-  let maxPrime = 0;
-
-  for (let i = 0; i < 24; i++) {
-    const val = board[i];
-    if (player === WHITE) {
-      if (val === 1) myBlots++;
-      else if (val === -1) oppBlots++;
-      
-      if (val >= 2) {
-        myPoints++;
-        consecutivePoints++;
-        maxPrime = Math.max(maxPrime, consecutivePoints);
-      } else {
-        consecutivePoints = 0;
-      }
-    } else {
-      if (val === -1) myBlots++;
-      else if (val === 1) oppBlots++;
-      
-      if (val <= -2) {
-        myPoints++;
-        consecutivePoints++;
-        maxPrime = Math.max(maxPrime, consecutivePoints);
-      } else {
-        consecutivePoints = 0;
-      }
-    }
-  }
-
-  score -= myBlots * 5;
-  score += oppBlots * 5;
-  score += myPoints * 3;
-  score += maxPrime * 5;
-
-  return score;
-}
