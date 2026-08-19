@@ -34,7 +34,16 @@ export function nextMultiplier(current) {
   return Math.min(current * 2, MAX_MULTIPLIER);
 }
 
-export function canOfferRaise(multiplier, cubeOwner, side) {
+// Katlama yalnızca en zor masada oynanır: düşük masalar yeni oyuncular
+// içindir, orada bahis riski öğrenmeyi zorlaştırır.
+export const RAISE_ENABLED_TABLE = 'hard';
+
+export function raiseAllowedOnTable(tableId) {
+  return tableId === RAISE_ENABLED_TABLE;
+}
+
+export function canOfferRaise(multiplier, cubeOwner, side, tableId) {
+  if (!raiseAllowedOnTable(tableId)) return false;
   if (multiplier >= MAX_MULTIPLIER) return false;
   // Küp ortadaysa iki taraf da önerebilir; sahibi varsa yalnızca sahibi
   return cubeOwner === null || cubeOwner === side;

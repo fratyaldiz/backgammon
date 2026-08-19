@@ -576,14 +576,17 @@ function getHardMove(board, bar, borneOff, player, outcomes) {
     for (const combo of DICE_COMBINATIONS) {
       const replies = collectReplyStates(s.board, s.bar, s.borneOff, opponent, combo.roll, AI_HARD_REPLY_CAP);
 
+      // Zar dağılımı üzerinden ortalanan büyüklük kazanma olasılığıdır.
+      // Ham skor değerle doğrusal değildir; onu ortalamak, uç konumları
+      // olduğundan ağır gösterip riskli hamleleri yanlış değerlendirir.
       let worstForUs;
       if (replies.length === 0) {
-        worstForUs = evaluateExpert(s.board, s.bar, s.borneOff, player);
+        worstForUs = winProbability(s.board, s.bar, s.borneOff, player);
       } else {
         worstForUs = Infinity;
         for (const r of replies) {
-          // Değerlendirme simetrik: bizim skorumuzun minimumu = rakibin en iyisi
-          const v = evaluateExpert(r.board, r.bar, r.borneOff, player);
+          // Değerlendirme simetrik: bizim olasılığımızın minimumu = rakibin en iyisi
+          const v = winProbability(r.board, r.bar, r.borneOff, player);
           if (v < worstForUs) worstForUs = v;
         }
       }
@@ -591,8 +594,9 @@ function getHardMove(board, bar, borneOff, player, outcomes) {
       expected += worstForUs * combo.prob;
     }
 
-    // Statik skoru küçük ağırlıkla kat: eşitlik bozucu, yapısal tercihleri korur
-    const value = expected + cand.staticScore * 0.08;
+    // Statik skoru çok küçük ağırlıkla kat: eşitlik bozucu, yapısal tercihleri
+    // korur. Olasılık 0-1 aralığında olduğu için ağırlık da ona göre küçüktür.
+    const value = expected + cand.staticScore * 0.0002;
 
     if (value > bestValue + 1e-9) {
       bestValue = value;
@@ -671,12 +675,55 @@ function hasContactNow(board, bar) {
   return maxW > minB;
 }
 
-/** Verilen taraf için kazanma olasılığı (0-1). */
+/** Konumun anlık kazanma olasılığı (0-1), ileriye bakmadan. */
 export function winProbability(board, bar, borneOff, player) {
   const score = evaluateExpert(board, bar, borneOff, player);
   const c = hasContactNow(board, bar) ? WIN_PROB_COEF.contact : WIN_PROB_COEF.race;
   const p = 1 / (1 + Math.exp(-c.w1 * score));
   return Math.min(Math.max(p, 0.01), 0.99);
+}
+
+/**
+ * İleriye bakan kazanma olasılığı.
+ *
+ * Bahis kararı anlık görüntüyle verilemez: sıradaki atış konumu tümüyle
+ * değiştirebilir. Bu yüzden 21 zar kombinasyonunun tamamı denenir, her
+ * biri için sıradaki tarafın en iyi cevabı bulunur ve sonuçların olasılıkla
+ * ağırlıklı ortalaması alınır.
+ *
+ * nextToRoll: sırası gelen taraf. Katlama teklifi kendi turumuzda zar
+ * atmadan önce yapıldığından, teklifi değerlendirirken sırayı atacak olan
+ * taraf hesaba katılmalıdır.
+ */
+export function lookaheadWinProbability(board, bar, borneOff, player, nextToRoll) {
+  let expected = 0;
+
+  for (const combo of DICE_COMBINATIONS) {
+    const replies = collectReplyStates(board, bar, borneOff, nextToRoll, combo.roll, CUBE_REPLY_CAP);
+
+    let value;
+    if (replies.length === 0) {
+      value = winProbability(board, bar, borneOff, player);
+    } else if (nextToRoll === player) {
+      // Sıra bizde: en iyi sonucu seçeriz
+      value = -Infinity;
+      for (const r of replies) {
+        const v = winProbability(r.board, r.bar, r.borneOff, player);
+        if (v > value) value = v;
+      }
+    } else {
+      // Sıra rakipte: bizim için en kötüsünü seçer
+      value = Infinity;
+      for (const r of replies) {
+        const v = winProbability(r.board, r.bar, r.borneOff, player);
+        if (v < value) value = v;
+      }
+    }
+
+    expected += value * combo.prob;
+  }
+
+  return Math.min(Math.max(expected, 0.01), 0.99);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -691,6 +738,10 @@ export function winProbability(board, bar, borneOff, player) {
 // oynaklık ve küçük bir cesaret payı eklenir. Böylece rakip bazen sınırda
 // katlar, bazen zayıf konumda blöfe yakın bir kabul yapar.
 // ─────────────────────────────────────────────────────────────
+// Katlama kararında rakip cevaplarının örneklem sınırı. Karar tur başına
+// en çok bir kez verildiği için hamle aramasından daha geniş tutulabilir.
+const CUBE_REPLY_CAP = 40;
+
 const CUBE_STYLE = {
   easy:   { offerAt: 0.86, takeDown: 0.34, jitter: 0.10, boldness: 0.00 },
   medium: { offerAt: 0.76, takeDown: 0.28, jitter: 0.06, boldness: 0.02 },
@@ -707,7 +758,8 @@ function styleFor(difficulty) {
  */
 export function shouldOfferRaise(board, bar, borneOff, player, difficulty) {
   const st = styleFor(difficulty);
-  const p = winProbability(board, bar, borneOff, player);
+  // Teklifi veren taraf zarı henüz atmadı: sıra kendisindedir
+  const p = lookaheadWinProbability(board, bar, borneOff, player, player);
   const noise = (Math.random() * 2 - 1) * st.jitter;
   const effective = p + noise + st.boldness;
 
@@ -722,7 +774,9 @@ export function shouldOfferRaise(board, bar, borneOff, player, difficulty) {
  */
 export function shouldAcceptRaise(board, bar, borneOff, player, difficulty) {
   const st = styleFor(difficulty);
-  const p = winProbability(board, bar, borneOff, player);
+  // Teklifi veren taraf sırada: kabul edersek önce o atacak
+  const opponent = player === WHITE ? BLACK : WHITE;
+  const p = lookaheadWinProbability(board, bar, borneOff, player, opponent);
   const noise = (Math.random() * 2 - 1) * st.jitter;
   const effective = p + noise + st.boldness;
   return effective >= st.takeDown;

@@ -102,7 +102,7 @@ const GameScreen = () => {
   const [confirmAction, setConfirmAction] = useState(null);
   const inProgress = gamePhase !== 'menu' && gamePhase !== 'game_over' && stake > 0;
   // Katlama önerilebilir mi: hak bizde (veya ortada) ve mars riskini karşılıyoruz
-  const canRaise = canOfferRaise(multiplier, cubeOwner, playerColor)
+  const canRaise = canOfferRaise(multiplier, cubeOwner, playerColor, tableId)
     && balance >= balanceForRaise(stake, multiplier);
 
   // Yerleşim ölçüleri cihaza göre oranlanır; çentik/ev göstergesi payları
@@ -171,22 +171,25 @@ const GameScreen = () => {
           )}
 
           {isPlayerTurn && gamePhase === 'rolling' && (
-            <TouchableOpacity style={[styles.rollButton, { minWidth: clamp(winH * 0.17, 60, 96), paddingVertical: s(9) }]} onPress={rollDice}>
-              <Ionicons name="dice" size={iconSize} color={THEME.colors.textDark} />
-              <Text style={[styles.rollButtonLabel, { fontSize: btnFont }]}>ZAR AT</Text>
-            </TouchableOpacity>
-          )}
+            <View style={styles.rollRow}>
+              {/* Katlama, zar atma düğmesinin solunda durur */}
+              {canRaise && (
+                <TouchableOpacity
+                  style={[styles.raiseButton, { minWidth: clamp(winH * 0.15, 52, 84), paddingVertical: s(7) }]}
+                  onPress={offerRaise}
+                >
+                  <Ionicons name="trending-up" size={iconSize * 0.8} color={THEME.colors.goldLight} />
+                  <Text style={[styles.actionButtonLabel, { fontSize: btnFont * 0.8 }]}>
+                    ×{nextMultiplier(multiplier)}
+                  </Text>
+                </TouchableOpacity>
+              )}
 
-          {isPlayerTurn && gamePhase === 'rolling' && canRaise && (
-            <TouchableOpacity
-              style={[styles.raiseButton, { minWidth: clamp(winH * 0.155, 54, 88), paddingVertical: s(7) }]}
-              onPress={offerRaise}
-            >
-              <Ionicons name="trending-up" size={iconSize * 0.85} color={THEME.colors.textPrimary} />
-              <Text style={[styles.actionButtonLabel, { fontSize: btnFont * 0.85 }]}>
-                ×{nextMultiplier(multiplier)} Katla
-              </Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={[styles.rollButton, { minWidth: clamp(winH * 0.17, 60, 96), paddingVertical: s(9) }]} onPress={rollDice}>
+                <Ionicons name="dice" size={iconSize} color={THEME.colors.textDark} />
+                <Text style={[styles.rollButtonLabel, { fontSize: btnFont }]}>ZAR AT</Text>
+              </TouchableOpacity>
+            </View>
           )}
 
           {isPlayerTurn && gamePhase === 'moving' && moveHistory.length > 0 && (
@@ -741,6 +744,11 @@ const styles = StyleSheet.create({
   multiplierText: {
     color: '#FFF',
     fontWeight: '900',
+  },
+  rollRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   raiseButton: {
     backgroundColor: 'rgba(212,175,55,0.28)',

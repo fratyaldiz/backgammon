@@ -486,10 +486,10 @@ const useGameStore = create((set, get) => {
     // ─── YAPAY ZEKA TURU ─────────────────────────
     executeAITurn: () => {
       const { board, bar, borneOff, difficulty, currentPlayer, multiplier,
-              cubeOwner, playerColor, stake, balance, raiseOffer } = get();
+              cubeOwner, playerColor, stake, balance, raiseOffer, tableId } = get();
 
       // Zar atmadan önce: konum yeterince iyiyse bahsi katlamayı öner
-      if (!raiseOffer && canOfferRaise(multiplier, cubeOwner, currentPlayer)) {
+      if (!raiseOffer && canOfferRaise(multiplier, cubeOwner, currentPlayer, tableId)) {
         const to = nextMultiplier(multiplier);
         // Oyuncu kabul ederse karşılayabilmeli; karşılayamayacaksa teklif edilmez
         const playerCanCover = balance >= stake * to * 2;
@@ -610,11 +610,11 @@ const useGameStore = create((set, get) => {
     // reddedilirse oyun o anki değerinden kaybedilir.
     offerRaise: () => {
       const { gamePhase, currentPlayer, playerColor, multiplier, cubeOwner,
-              balance, stake, raiseOffer } = get();
+              balance, stake, raiseOffer, tableId } = get();
       if (raiseOffer) return false;
       // Yalnızca kendi sıramızda ve zar atmadan önce
       if (gamePhase !== 'rolling' || currentPlayer !== playerColor) return false;
-      if (!canOfferRaise(multiplier, cubeOwner, playerColor)) return false;
+      if (!canOfferRaise(multiplier, cubeOwner, playerColor, tableId)) return false;
       // Katlanmış bahsin mars kaybını karşılayacak bakiye şartı
       if (balance < balanceForRaise(stake, multiplier)) {
         set({ message: 'Katlamak için bakiyeniz yetersiz.' });
